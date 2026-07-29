@@ -1,0 +1,869 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>携帯料金 年間ダッシュボード（ドコモ請求書）</title>
+<style>
+  :root{
+    --bg:#f4f6f8; --card:#fff; --ink:#1c2430; --muted:#6b7684; --line:#dfe4ea;
+    --blue:#2563eb; --blueBg:#e9f0fe;
+    --green:#0d9668; --greenBg:#e5f6ef;
+    --amber:#e0820a; --amberBg:#fdf1df;
+    --purple:#7c3aed; --purpleBg:#f1eafd;
+    --red:#dc2626; --redBg:#fdecec; --redTint:#fff5f5;
+    --blueTint:#f3f8ff;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:"Hiragino Kaku Gothic ProN","Yu Gothic",Meiryo,system-ui,sans-serif;
+    line-height:1.5;font-size:14px;}
+  .top{background:#fff;border-bottom:1px solid var(--line);padding:12px 22px;display:flex;align-items:center;gap:16px;flex-wrap:wrap;position:sticky;top:0;z-index:20;}
+  .top h1{font-size:18px;margin:0;}
+  .top .badge{font-size:12px;color:var(--muted);}
+  .top .sp{flex:1;}
+  .wrap{max-width:1240px;margin:0 auto;padding:18px 22px 60px;}
+  .btn{border:none;border-radius:8px;padding:8px 14px;font-size:12.5px;font-weight:700;cursor:pointer;font-family:inherit;background:var(--blue);color:#fff;}
+  .btn.sec{background:#eef1f5;color:var(--ink);} .btn.green{background:var(--green);} .btn.ghost{background:transparent;color:var(--muted);border:1px solid var(--line);}
+  .btn.sm{padding:5px 10px;font-size:12px;} .btn:disabled{opacity:.45;cursor:not-allowed;}
+
+  /* drop */
+  #drop{border:2px dashed #b9c2cd;border-radius:12px;padding:20px;text-align:center;color:var(--muted);cursor:pointer;background:#fbfcfd;transition:.15s;}
+  #drop.drag{border-color:var(--blue);background:var(--blueBg);color:var(--blue);}
+  #drop b{color:var(--ink);}
+  .loadrow{display:flex;gap:16px;align-items:center;flex-wrap:wrap;}
+  .loadrow .info{font-size:12.5px;color:var(--muted);}
+  .chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;}
+  .chip{font-size:11.5px;background:var(--blueBg);color:var(--blue);border:1px solid #c4d8fb;border-radius:20px;padding:2px 10px;font-weight:700;}
+
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px 18px;margin-bottom:16px;}
+  .tabs{display:flex;gap:4px;margin:6px 0 16px;flex-wrap:wrap;}
+  .tab{padding:8px 16px;border-radius:9px;font-weight:700;font-size:13px;cursor:pointer;background:#eef1f5;color:var(--muted);border:none;font-family:inherit;}
+  .tab.active{background:var(--ink);color:#fff;}
+  .pane{display:none;} .pane.active{display:block;}
+
+  /* 期(term) bar */
+  .kicard{padding:12px 16px;}
+  .kibar{display:flex;gap:6px;align-items:center;flex-wrap:wrap;}
+  .kibtn{display:inline-flex;align-items:center;gap:4px;padding:7px 12px;border-radius:9px;font-weight:800;font-size:13px;cursor:pointer;background:#eef1f5;color:var(--muted);border:1px solid var(--line);font-family:inherit;user-select:none;}
+  .kibtn.active{background:var(--blue);color:#fff;border-color:var(--blue);}
+  .kibtn .cnt{font-weight:700;font-size:11px;opacity:.8;}
+  .kidel{display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;background:rgba(0,0,0,.12);color:inherit;font-size:12px;font-weight:800;margin-left:1px;}
+  .kidel:hover{background:var(--red);color:#fff;}
+  .kibtn.active .kidel{background:rgba(255,255,255,.3);}
+  .kiadd{width:34px;height:34px;border-radius:9px;border:1px dashed #9fb0c4;background:#fff;color:var(--blue);font-size:19px;font-weight:800;cursor:pointer;line-height:1;}
+  .kiadd:hover{background:var(--blueBg);}
+  .kimeta{margin-top:8px;font-size:12.5px;color:var(--muted);display:flex;gap:10px;align-items:center;flex-wrap:wrap;}
+  .kimeta b{color:var(--ink);}
+  .anchorbox{display:none;gap:6px;align-items:center;background:#f7f9fb;border:1px solid var(--line);border-radius:8px;padding:6px 10px;margin-top:8px;font-size:12.5px;}
+  .anchorbox.show{display:flex;flex-wrap:wrap;}
+  .anchorbox input{width:64px;}
+  .linkbtn{background:none;border:none;color:var(--blue);font-size:12.5px;font-weight:700;cursor:pointer;font-family:inherit;padding:0;text-decoration:underline;}
+
+  .tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;}
+  .tile{border-radius:12px;padding:12px 14px;border:1px solid var(--line);background:#fff;}
+  .tile .lab{font-size:11.5px;color:var(--muted);font-weight:700;margin-bottom:3px;}
+  .tile .val{font-size:22px;font-weight:800;}
+  .tile .val small{font-size:12px;font-weight:700;color:var(--muted);}
+  .tile.info{background:var(--blueBg);border-color:#c4d8fb;} .tile.info .val{color:var(--blue);}
+  .tile.ok{background:var(--greenBg);border-color:#b6e6d3;} .tile.ok .val{color:var(--green);}
+  .tile.amb{background:var(--amberBg);border-color:#f2d3a0;} .tile.amb .val{color:var(--amber);}
+  .tile.warn{background:var(--redBg);border-color:#f3c2c2;} .tile.warn .val{color:var(--red);}
+  .up{color:var(--red);} .down{color:var(--blue);}
+
+  .h3{font-size:14px;font-weight:800;margin:22px 0 10px;}
+  .tblwrap{overflow-x:auto;}
+  table{border-collapse:collapse;font-size:12.5px;width:100%;}
+  th,td{padding:6px 9px;border-bottom:1px solid var(--line);white-space:nowrap;text-align:left;vertical-align:top;}
+  th{background:#eef1f5;font-size:11.5px;position:sticky;top:0;}
+  td.num,th.num{text-align:right;font-variant-numeric:tabular-nums;}
+  tr.dept td{background:#e4e9f0;font-weight:800;font-size:11.5px;color:#33404f;}
+  tr.tot td{background:#f7f9fb;font-weight:800;}
+  .cUp{background:var(--redTint);color:#b42318;font-weight:700;}
+  .cDown{background:var(--blueTint);color:#1c4bb5;font-weight:700;}
+  .cNew{background:var(--amberBg);color:#7a4708;font-weight:700;}
+  .flag{display:inline-block;font-size:10.5px;font-weight:800;padding:1px 7px;border-radius:20px;}
+  .f-miss{background:var(--redBg);color:var(--red);} .f-extra{background:var(--amberBg);color:var(--amber);} .f-dup{background:var(--purpleBg);color:var(--purple);}
+
+  /* two-line handover name */
+  .nmline{display:flex;gap:6px;align-items:baseline;}
+  .nmline + .nmline{margin-top:2px;}
+  .nmnm{font-weight:600;}
+  .nmrg{font-size:10.5px;color:var(--muted);font-weight:700;background:#eef1f5;border-radius:10px;padding:0 6px;}
+  .nmline.chg .nmnm{color:var(--amber);}
+
+  select,input[type=text],input[type=number]{font-family:inherit;font-size:13px;padding:6px 8px;border:1px solid var(--line);border-radius:8px;}
+  .hint{font-size:12px;color:var(--muted);margin-top:6px;}
+  .extra{margin-top:12px;padding:10px 14px;border-radius:10px;background:var(--amberBg);border:1px solid #f2d3a0;font-size:12.5px;}
+  .extra ul{margin:6px 0 0;padding-left:18px;}
+  .addlist{margin-top:10px;display:flex;flex-direction:column;gap:6px;}
+  .addrow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:#fff;border:1px solid #f2d3a0;border-radius:8px;padding:6px 10px;}
+  .addrow .ph{font-weight:700;font-variant-numeric:tabular-nums;min-width:128px;}
+  .addrow .amt{color:var(--muted);min-width:66px;text-align:right;}
+  .addrow input{border:1px solid var(--line);background:#fff;}
+  .addrow .adept{width:120px;} .addrow .aname{width:130px;}
+  .addrow .sp{flex:1;}
+  textarea{width:100%;min-height:180px;border:1px solid var(--line);border-radius:8px;padding:8px;font-family:ui-monospace,monospace;font-size:12px;}
+  .toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--ink);color:#fff;padding:10px 18px;border-radius:10px;font-size:13px;opacity:0;transition:.2s;pointer-events:none;z-index:50;}
+  .toast.show{opacity:1;}
+  /* chart */
+  .chartbox{position:relative;}
+  svg .grid{stroke:#eef1f5;stroke-width:1;}
+  svg .axis{stroke:#c7cdd4;stroke-width:1;}
+  svg text{fill:var(--muted);font-size:11px;}
+  .tipbox{position:absolute;background:var(--ink);color:#fff;font-size:12px;padding:6px 9px;border-radius:8px;pointer-events:none;opacity:0;transform:translate(-50%,-120%);white-space:nowrap;}
+  .masterTbl input{width:100%;border:1px solid transparent;background:transparent;border-radius:5px;padding:3px 5px;font-size:12.5px;}
+  .masterTbl input:focus{border-color:var(--blue);background:#fff;}
+  /* handover editor in master */
+  .tlcell{min-width:230px;}
+  .tlrow{display:flex;gap:5px;align-items:center;margin-bottom:4px;}
+  .tlrow select{padding:4px 6px;font-size:12px;}
+  .tlrow input{border:1px solid var(--line)!important;background:#fff!important;width:120px;}
+  .tlrow .x{color:var(--red);border:none;background:none;cursor:pointer;font-weight:800;font-size:14px;padding:0 4px;}
+  .tladd{font-size:11.5px;color:var(--blue);background:var(--blueBg);border:1px solid #c4d8fb;border-radius:8px;padding:3px 9px;font-weight:700;cursor:pointer;}
+  .base{font-size:11px;color:var(--muted);font-weight:700;}
+  .code{background:#eef1f5;padding:1px 6px;border-radius:5px;font-size:12px;}
+  /* sync (GAS) */
+  .synccard{padding:11px 16px;}
+  .syncrow{display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+  .syncdot{width:10px;height:10px;border-radius:50%;background:#c7cdd4;display:inline-block;flex:none;}
+  .syncdot.on{background:var(--green);} .syncdot.err{background:var(--red);} .syncdot.warn{background:var(--amber);} .syncdot.busy{background:var(--blue);}
+  .synccfg{margin-top:10px;border-top:1px solid var(--line);padding-top:10px;display:none;flex-direction:column;gap:8px;}
+  .synccfg.show{display:flex;}
+  .cfgrow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+  .cfgrow>label{min-width:120px;font-size:12.5px;font-weight:700;color:var(--muted);}
+  .cfgrow input[type=text]{flex:1;min-width:220px;}
+</style>
+</head>
+<body>
+<div class="top">
+  <h1>携帯料金 年間ダッシュボード</h1>
+  <span class="badge" id="statusBadge">データなし</span>
+  <span class="sp"></span>
+  <input type="file" id="jsonIn" accept=".json" style="display:none">
+  <button class="btn sec sm" id="exportJson">データ書き出し(JSON)</button>
+  <button class="btn sec sm" id="importJson">データ読み込み(JSON)</button>
+  <button class="btn ghost sm" id="clearAll">全消去</button>
+</div>
+
+<div class="wrap">
+  <!-- LOAD -->
+  <div class="card">
+    <div class="loadrow">
+      <div style="flex:1;min-width:260px">
+        <div id="drop">
+          <div style="font-size:24px">📄</div>
+          <div><b>請求書PDFをここにドラッグ</b>（複数月まとめてOK）／ クリックで選択</div>
+        </div>
+      </div>
+      <div class="info" id="loadInfo" style="max-width:340px">
+        毎月のドコモ請求書PDFを読み込むと、月ごとに自動で蓄積されます（同じ月は上書き＝重複なし）。<br>データはこのブラウザに自動保存され、外部には送信されません。
+      </div>
+    </div>
+    <input type="file" id="pdfIn" accept="application/pdf" multiple style="display:none">
+    <div class="chips" id="monthChips"></div>
+    <div id="loadStatus" class="hint"></div>
+  </div>
+
+  <!-- SHARED (GAS) -->
+  <div class="card synccard">
+    <div class="syncrow">
+      <span class="syncdot" id="syncDot"></span>
+      <b>共有（GAS）</b>
+      <span class="hint" id="syncStatus" style="margin:0">未設定（このブラウザ内のみ保存）</span>
+      <span style="flex:1"></span>
+      <button class="btn sec sm" id="syncPull">最新を取得</button>
+      <button class="btn sec sm" id="syncToggle">設定</button>
+    </div>
+    <div class="synccfg" id="syncCfg">
+      <div class="cfgrow"><label>GAS URL</label><input type="text" id="cfgUrl" placeholder="https://script.google.com/macros/s/****/exec"></div>
+      <div class="cfgrow"><label>アクセストークン</label><input type="text" id="cfgToken" placeholder="（GAS側で決めた合言葉。未設定なら空でOK）"></div>
+      <div class="cfgrow"><label>あなたの表示名</label><input type="text" id="cfgBy" placeholder="例：池田"></div>
+      <div class="cfgrow"><label>自動保存</label><label style="min-width:0;font-weight:400;color:var(--ink)"><input type="checkbox" id="cfgAuto"> 変更を自動で共有DBに保存する</label></div>
+      <div class="cfgrow">
+        <button class="btn sm" id="cfgTest">接続テスト</button>
+        <button class="btn green sm" id="cfgPushNow">今すぐ共有に保存</button>
+        <button class="btn sec sm" id="cfgSaveBtn">設定を保存</button>
+      </div>
+      <div class="hint">URL・トークン・表示名はこのブラウザにのみ保存され、公開HTMLには含まれません。共有DBを開くと、この端末のデータは共有側の内容に置き換わります（表示中の期は各自の設定のまま）。</div>
+    </div>
+  </div>
+
+  <!-- 期 (TERM) BAR -->
+  <div class="card kicard">
+    <div class="kibar" id="kibar"></div>
+    <div class="kimeta" id="kimeta"></div>
+    <div class="anchorbox" id="anchorbox">
+      <span>基準：第</span><input type="number" id="anchorNum" step="1"><span>期 ＝</span>
+      <input type="number" id="anchorYear" step="1"><span>年 7月始まり</span>
+      <button class="btn sm" id="anchorApply">反映</button>
+      <span class="hint" style="margin:0">※ 期の番号と年の対応を合わせるときだけ変更</span>
+    </div>
+  </div>
+
+  <div class="tabs">
+    <button class="tab active" data-pane="dash">ダッシュボード</button>
+    <button class="tab" data-pane="matrix">人 × 月マトリクス</button>
+    <button class="tab" data-pane="month">単月チェック</button>
+    <button class="tab" data-pane="master">マスタ（名簿）</button>
+  </div>
+
+  <!-- DASH -->
+  <div class="pane active" id="pane-dash">
+    <div class="card">
+      <div class="tiles" id="dashTiles"><div class="hint">PDFを読み込むと表示されます。</div></div>
+      <div class="h3">月別 請求総額の推移</div>
+      <div class="chartbox" id="trendBox"></div>
+      <div class="h3">最新月の部署別内訳</div>
+      <div id="deptBox"></div>
+    </div>
+  </div>
+
+  <!-- MATRIX -->
+  <div class="pane" id="pane-matrix">
+    <div class="card">
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
+        <button class="btn sm" id="dlMatrix">マトリクスをCSVで出力</button>
+        <span class="hint" style="margin:0">前月比 <span class="code">±1,000円</span> 以上の変化を色分け（<span class="up">増=赤</span> / <span class="down">減=青</span> / <span style="color:var(--amber)">新規=黄</span>）。担当交代は氏名欄に二行表示。</span>
+      </div>
+      <div class="tblwrap"><table id="matrixTbl"></table></div>
+    </div>
+  </div>
+
+  <!-- MONTH -->
+  <div class="pane" id="pane-month">
+    <div class="card">
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:12px">
+        <label>月を選択：</label>
+        <select id="monthSel"></select>
+        <button class="btn green sm" id="copyCol">📋 金額列をコピー（名簿順）</button>
+        <button class="btn sm" id="dlMonthCsv">当月CSV</button>
+      </div>
+      <div class="tiles" id="monthTiles"></div>
+      <div id="monthExtra"></div>
+      <div class="tblwrap" style="margin-top:12px"><table id="monthTbl"></table></div>
+    </div>
+  </div>
+
+  <!-- MASTER -->
+  <div class="pane" id="pane-master">
+    <div class="card">
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;align-items:center">
+        <button class="btn sm" id="addRow">＋ 行を追加</button>
+        <button class="btn sec sm" id="bulkToggle">まとめて編集（テキスト）</button>
+        <span class="hint" style="margin:0">氏名・電話番号・部署を編集。番号はそのままで人が代わったときは、氏名を上書きせず<b>「＋交代」</b>で交代月と新しい氏名を追加してください（<span id="masterKiLabel"></span>の交代だけを記録します）。</span>
+      </div>
+      <div id="dupWarn"></div>
+      <div id="bulkArea" style="display:none;margin-bottom:12px">
+        <div class="hint">1行 <span class="code">部署,氏名,電話番号</span></div>
+        <textarea id="bulkText"></textarea>
+        <button class="btn sec sm" id="bulkApply" style="margin-top:6px">反映</button>
+      </div>
+      <div class="tblwrap"><table class="masterTbl" id="masterTbl"></table></div>
+    </div>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script src="./lib/cmaps.js"></script>
+<script src="./lib/pdf.min.js"></script>
+<script>
+/* ============================================================
+   ★ 共有（GAS）設定 ― ここだけ編集 ★
+   GitHub Pages に上げる前に、GASのデプロイURL（…/exec）を貼り付けてください。
+   ここを設定すると、開いた人は自動で共有DBに接続します（各自の設定入力は不要）。
+   ※合言葉（トークン）は使いません。GAS側もアクセス手前の認証で保護する前提です。
+   ============================================================ */
+const BAKED_SYNC = {
+  url:   "",     // 例 "https://script.google.com/macros/s/XXXXXXXX/exec"
+  token: "",     // 使いません（空のまま）
+  auto:  true    // 変更を自動で共有DBへ保存する
+};
+// ===== OFFLINE ENGINE PLACEHOLDER =====
+// pdf.js は同じリポジトリの ./lib/ から読み込み（オフライン同梱なし・軽量版）
+class InlineCMapReaderFactory{
+  constructor(){}
+  async fetch({name}){ const short=name.split('/').pop(); const b64=(window.__CMAPS||{})[short]; if(!b64) throw new Error('CMap not found: '+short); const bin=atob(b64); const a=new Uint8Array(bin.length); for(let i=0;i<bin.length;i++)a[i]=bin.charCodeAt(i); return {cMapData:a, compressionType:1}; }
+}
+try{ pdfjsLib.GlobalWorkerOptions.workerSrc="./lib/pdf.worker.min.js"; }catch(e){}
+let __pdfReady = Promise.resolve();
+// ===== default roster =====
+const DEFAULT_ROSTER = [];
+const COMPARE_YEN = 1000;
+const STORE_KEY = "keitai_dashboard_v1";
+
+const $ = id=>document.getElementById(id);
+const digits = s=>(s||"").replace(/[^0-9]/g,"");
+const yen = n=>(n==null||n==="")?"":Number(n).toLocaleString("ja-JP");
+const esc = s=>(s||"").replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+function toast(m){const t=$("toast");t.textContent=m;t.classList.add("show");setTimeout(()=>t.classList.remove("show"),1600);}
+
+let state = { master: DEFAULT_ROSTER.slice(), months: {}, kiAnchor:{num:40,startYear:2025}, extraKi:[], currentKi:null };
+
+// ---- persistence ----
+function save(){ try{ localStorage.setItem(STORE_KEY, JSON.stringify(state)); }catch(e){} renderStatus(); schedulePush(); }
+function load(){ try{ const s=localStorage.getItem(STORE_KEY); if(s){ const o=JSON.parse(s); if(o&&o.master) state=o; } }catch(e){} migrate(); }
+function migrate(){
+  state.months = state.months||{};
+  state.kiAnchor = state.kiAnchor||{num:40,startYear:2025};
+  // 旧初期値(40期=2026)で保存されていた場合は正しい対応(40期=2025)へ補正
+  if(state.kiAnchor.num===40 && state.kiAnchor.startYear===2026) state.kiAnchor.startYear=2025;
+  state.extraKi = state.extraKi||[];
+  if(state.currentKi===undefined) state.currentKi=null;
+  state.master.forEach(p=>{ if(!p.tl) p.tl={}; });
+}
+
+function normalize(s){ s=s.normalize('NFKC'); for(const d of ['−','－','‐','―','—','–','ｰ']) s=s.split(d).join('-'); return s; }
+
+async function parsePdf(buf){
+  await __pdfReady;
+  const doc = await pdfjsLib.getDocument({data:buf, cMapPacked:true, useWorkerFetch:false, CMapReaderFactory: InlineCMapReaderFactory}).promise;
+  let lines=[];
+  for(let i=1;i<=doc.numPages;i++){
+    const page=await doc.getPage(i); const tc=await page.getTextContent();
+    const rows={};
+    for(const it of tc.items){ if(!it.str)continue; const y=Math.round(it.transform[5]); (rows[y]=rows[y]||[]).push([it.transform[4],it.str]); }
+    Object.keys(rows).map(Number).sort((a,b)=>b-a).forEach(y=>lines.push(normalize(rows[y].sort((a,b)=>a[0]-b[0]).map(x=>x[1]).join(' '))));
+  }
+  const text=lines.join('\n');
+  let ym="", label="";
+  const bm=text.match(/(\d{4})\s*年\s*(\d{1,2})\s*月ご請求分/);
+  if(bm){ ym=bm[1]+"-"+String(bm[2]).padStart(2,"0"); label=bm[1]+"年"+bm[2]+"月"; }
+  const lc=text.match(/（\s*(\d+)\s*回線請求分）/); const lineCount=lc?parseInt(lc[1]):null;
+  const gm=text.match(/◇合計(?:\s|合計)*([\d,]+)/); const grand=gm?parseInt(gm[1].replace(/,/g,'')):null;
+  const parts=text.split(/(?=◆\s*0\d{1,2}-\d{3,4}-\d{4})/);
+  const records=[];
+  for(const part of parts){
+    const m=part.match(/◆\s*(0\d{1,2}-\d{3,4}-\d{4})/); if(!m)continue;
+    const tm=part.match(/◇合計(?:\s|合計)*([\d,]+)/);
+    records.push({phone:m[1], total: tm?parseInt(tm[1].replace(/,/g,'')):null});
+  }
+  const sum=records.reduce((a,r)=>a+(r.total||0),0);
+  return {ym,label,records,grand,sum,lineCount};
+}
+
+// ---- month/term helpers ----
+function sortedMonths(){ return Object.keys(state.months).sort(); }
+function mLabel(ym){ const [y,m]=ym.split("-"); return y.slice(2)+"/"+m; }
+function amountMap(ym){ const m={}; const mo=state.months[ym]; if(mo) for(const r of mo.records) m[digits(r.phone)]=r.total; return m; }
+function monthNum(ym){ return parseInt(ym.split("-")[1],10); }
+function prevMonth(ym){ let [y,m]=ym.split("-").map(Number); m--; if(m<1){m=12;y--;} return y+"-"+String(m).padStart(2,"0"); }
+
+// 期(term): 7月始まり〜翌6月
+function kiStartYear(ym){ const [y,m]=ym.split("-").map(Number); return m>=7? y : y-1; }
+function kiNumOf(ym){ return state.kiAnchor.num + (kiStartYear(ym) - state.kiAnchor.startYear); }
+function kiRange(ki){ const sy = state.kiAnchor.startYear + (ki - state.kiAnchor.num); return {startYear:sy, start:sy+"-07", end:(sy+1)+"-06"}; }
+function kiLabel(ki){ return "第"+ki+"期"; }
+function kiSub(ki){ const r=kiRange(ki); return r.startYear+"年7月〜"+(r.startYear+1)+"年6月"; }
+function monthsOfKi(ki){ return sortedMonths().filter(ym=>kiNumOf(ym)===ki); }
+function allKis(){ const s=new Set(sortedMonths().map(kiNumOf)); (state.extraKi||[]).forEach(k=>s.add(k)); if(!s.size) s.add(state.kiAnchor.num); return [...s].sort((a,b)=>a-b); }
+function curKi(){ const ks=allKis(); if(state.currentKi!=null && ks.includes(state.currentKi)) return state.currentKi; return ks[ks.length-1]; }
+// list of "YYYY-MM" months in a 期 available for a 交代 change (2月目以降＝8月〜翌6月)
+function kiChangeMonths(ki){ const r=kiRange(ki); const out=[]; let m=r.start; for(let k=0;k<12;k++){ if(m!==r.start) out.push(m); m=nextMonth(m);} return out; }
+function nextMonth(ym){ let [y,m]=ym.split("-").map(Number); m++; if(m>12){m=1;y++;} return y+"-"+String(m).padStart(2,"0"); }
+
+// ---- handover timeline (per row, per 期) ----
+// p.tl[ki] = [{from:"YYYY-MM", name}] ← 交代分のみ。先頭(基準)は p.name / kiRange.start。
+// その期の「開始担当」＝ 直近（この期の開始月より前）の交代後の氏名。無ければ基準の氏名。
+function startHolder(p, ki){
+  const start=kiRange(ki).start; const tl=p.tl||{};
+  let best=null, bestFrom=null;
+  for(const kk in tl){ for(const e of (tl[kk]||[])){ if(e && e.from && e.name && e.from < start){ if(bestFrom===null||e.from>bestFrom){bestFrom=e.from;best=e.name;} } } }
+  return best!=null? best : (p.name||"");
+}
+function timelineOf(p, ki){
+  const base={from:kiRange(ki).start, name:startHolder(p,ki), base:true};
+  const chg=(p.tl&&p.tl[ki]?p.tl[ki]:[]).map(e=>({from:e.from,name:e.name})).filter(e=>e.from&&e.from>base.from);
+  chg.sort((a,b)=>a.from<b.from?-1:1);
+  return [base, ...chg];
+}
+function holderAt(p, ki, ym){ const tl=timelineOf(p,ki); let h=tl[0].name; for(const e of tl){ if(e.from<=ym) h=e.name; } return h; }
+function hasHandover(p, ki){ return timelineOf(p,ki).length>1; }
+function nameCell(p, ki){
+  const tl=timelineOf(p,ki);
+  if(tl.length<=1) return `<span class="nmnm">${esc(tl[0].name)}</span>`;
+  const end=kiRange(ki).end;
+  return tl.map((e,i)=>{
+    const spanEnd = i<tl.length-1 ? prevMonth(tl[i+1].from) : end;
+    const sM=monthNum(e.from), eM=monthNum(spanEnd);
+    let rg;
+    if(i===tl.length-1) rg = sM+"月〜";
+    else rg = (sM===eM? sM+"月" : sM+"〜"+eM+"月");
+    return `<div class="nmline${i>0?' chg':''}"><span class="nmnm">${esc(e.name)}</span><span class="nmrg">${rg}</span></div>`;
+  }).join("");
+}
+
+// build person x month matrix (scoped to a 期)
+function buildMatrix(ki){
+  const months=monthsOfKi(ki);
+  const maps=months.map(amountMap);
+  const dupSet=dupPhones();
+  const rows=state.master.map(p=>{
+    const d=digits(p.phone);
+    const vals=maps.map(mp=> d && (d in mp)? mp[d] : null);
+    const tot=vals.reduce((a,v)=>a+(v||0),0);
+    const cnt=vals.filter(v=>v!=null).length;
+    return {...p, d, vals, tot, avg: cnt?Math.round(tot/cnt):null, dup:dupSet.has(d)};
+  });
+  return {months, rows, maps};
+}
+function dupPhones(){ const seen={},dup=new Set(); for(const p of state.master){ const d=digits(p.phone); if(d){ if(seen[d])dup.add(d); seen[d]=true; } } return dup; }
+function extraFor(ym){ const set=new Set(state.master.map(p=>digits(p.phone))); const mo=state.months[ym]; if(!mo)return []; return mo.records.filter(r=>!set.has(digits(r.phone))); }
+
+// ================= RENDER =================
+function renderStatus(){
+  const n=sortedMonths().length;
+  $("statusBadge").textContent = n? `${n}か月分 保存済み（${mLabel(sortedMonths()[0])}〜${mLabel(sortedMonths()[n-1])}）` : "データなし";
+}
+function renderChips(){
+  const ms=monthsOfKi(curKi());
+  $("monthChips").innerHTML = ms.length
+    ? ms.map(ym=>`<span class="chip">${state.months[ym].label} (${state.months[ym].records.length})</span>`).join("")
+    : (sortedMonths().length? `<span class="hint" style="margin:0">この期に読み込まれた月はありません</span>`:"");
+}
+
+function renderKibar(){
+  const ks=allKis(), ck=curKi();
+  $("kibar").innerHTML = ks.map(k=>{
+    const c=monthsOfKi(k).length;
+    return `<span class="kibtn${k===ck?' active':''}" data-ki="${k}">${kiLabel(k)}<span class="cnt">${c?c+'ヶ月':'—'}</span><span class="kidel" data-del-ki="${k}" title="この期を削除">×</span></span>`;
+  }).join("") + `<button class="kiadd" id="kiAdd" title="次の期を追加">＋</button>`;
+  const c=monthsOfKi(ck).length;
+  $("kimeta").innerHTML = `<b>${kiLabel(ck)}</b>（${kiSub(ck)}）・ 読込 ${c}ヶ月分 <button class="linkbtn" id="anchorToggle">基準を調整</button>`;
+  $("masterKiLabel").textContent = kiLabel(ck);
+  $("anchorNum").value=state.kiAnchor.num; $("anchorYear").value=state.kiAnchor.startYear;
+  $("kibar").querySelectorAll(".kibtn").forEach(b=>b.addEventListener("click",()=>setKi(+b.dataset.ki)));
+  $("kibar").querySelectorAll(".kidel").forEach(x=>x.addEventListener("click",e=>{ e.stopPropagation(); delKi(+x.dataset.delKi); }));
+  $("kiAdd").addEventListener("click",()=>{ const next=Math.max(...allKis())+1; if(!state.extraKi.includes(next))state.extraKi.push(next); state.currentKi=next; save(); renderAll(); toast(kiLabel(next)+"を追加しました"); });
+  $("anchorToggle").addEventListener("click",()=>$("anchorbox").classList.toggle("show"));
+}
+function delKi(ki){
+  const c=monthsOfKi(ki).length;
+  if(c>0){
+    if(!confirm(`⚠ 注意：${kiLabel(ki)}（${kiSub(ki)}）には請求データが ${c}ヶ月分 入っています。\n\n削除すると、この期の月データ（マトリクス・単月チェックの内容）と担当交代の記録がすべて消えます。この操作は元に戻せません。\n\n本当に削除しますか？`)) return;
+    if(!confirm(`【最終確認】${kiLabel(ki)} の ${c}ヶ月分のデータを本当に削除します。よろしいですか？`)) return;
+    monthsOfKi(ki).forEach(ym=>{ delete state.months[ym]; });
+  } else {
+    if(!confirm(`${kiLabel(ki)}（${kiSub(ki)}）を削除します。よろしいですか？`)) return;
+  }
+  state.extraKi = (state.extraKi||[]).filter(k=>k!==ki);
+  state.master.forEach(p=>{ if(p.tl && p.tl[ki]) delete p.tl[ki]; });
+  if(state.currentKi===ki) state.currentKi=null;
+  save(); renderAll();
+  toast(kiLabel(ki)+"を削除しました");
+}
+function setKi(ki){ state.currentKi=ki; save(); renderKibar(); renderChips(); renderDashboard(); renderMatrix(); renderMonthSel(); renderMonth(); renderMaster(); }
+
+function renderDashboard(){
+  const ki=curKi(); const ms=monthsOfKi(ki);
+  if(!ms.length){ $("dashTiles").innerHTML=`<div class="hint">${kiLabel(ki)}（${kiSub(ki)}）のデータはまだありません。請求書PDFを読み込むと表示されます。</div>`; $("trendBox").innerHTML=""; $("deptBox").innerHTML=""; return; }
+  const totals=ms.map(ym=>state.months[ym].sum);
+  const latest=ms[ms.length-1], prev=ms.length>1?ms[ms.length-2]:null;
+  const latestT=state.months[latest].sum, prevT=prev?state.months[prev].sum:null;
+  const diff=prevT!=null?latestT-prevT:null;
+  const cum=totals.reduce((a,b)=>a+b,0);
+  const avg=Math.round(cum/ms.length);
+  const {rows}=buildMatrix(ki); const li=ms.length-1, pi=li-1;
+  let big=0; rows.forEach(r=>{ const c=r.vals[li],p=pi>=0?r.vals[pi]:null; if(c!=null&&p!=null&&Math.abs(c-p)>=COMPARE_YEN) big++; });
+  const extra=extraFor(latest).length;
+  $("dashTiles").innerHTML=`
+    <div class="tile info"><div class="lab">この期の登録月数</div><div class="val">${ms.length}<small> か月</small></div></div>
+    <div class="tile info"><div class="lab">最新月</div><div class="val" style="font-size:17px">${state.months[latest].label}</div></div>
+    <div class="tile info"><div class="lab">最新月 総額</div><div class="val" style="font-size:19px">¥${yen(latestT)}</div></div>
+    <div class="tile ${diff==null?'info':(diff>0?'warn':'ok')}"><div class="lab">前月比</div><div class="val" style="font-size:19px">${diff==null?'—':(diff>0?'+':'')+'¥'+yen(diff)}</div></div>
+    <div class="tile info"><div class="lab">月平均</div><div class="val" style="font-size:19px">¥${yen(avg)}</div></div>
+    <div class="tile ok"><div class="lab">${kiLabel(ki)} 累計</div><div class="val" style="font-size:19px">¥${yen(cum)}</div></div>
+    <div class="tile ${big+extra?'amb':'ok'}"><div class="lab">最新月 要確認</div><div class="val">${big+extra}<small> 件</small></div></div>`;
+  drawTrend(ms, totals);
+  drawDept(latest);
+}
+
+function drawTrend(ms, totals){
+  const W=Math.max(560, ms.length*70+80), H=240, P={l:64,r:20,t:16,b:34};
+  const iw=W-P.l-P.r, ih=H-P.t-P.b;
+  const max=Math.max(...totals)*1.08, min=Math.min(...totals)*0.9;
+  const x=i=> P.l + (ms.length===1? iw/2 : iw*i/(ms.length-1));
+  const y=v=> P.t + ih*(1-(v-min)/(max-min||1));
+  let g="";
+  for(let k=0;k<=4;k++){ const gy=P.t+ih*k/4; const gv=max-(max-min)*k/4; g+=`<line class="grid" x1="${P.l}" y1="${gy}" x2="${W-P.r}" y2="${gy}"/><text x="${P.l-8}" y="${gy+4}" text-anchor="end">¥${Math.round(gv/1000)}k</text>`; }
+  let path=ms.map((_,i)=>`${i?'L':'M'}${x(i).toFixed(1)},${y(totals[i]).toFixed(1)}`).join(" ");
+  let dots="", labs="", hit="";
+  ms.forEach((ym,i)=>{
+    dots+=`<circle cx="${x(i).toFixed(1)}" cy="${y(totals[i]).toFixed(1)}" r="4" fill="#2563eb" stroke="#fff" stroke-width="2"/>`;
+    labs+=`<text x="${x(i).toFixed(1)}" y="${H-14}" text-anchor="middle">${mLabel(ym)}</text>`;
+    hit+=`<rect x="${(x(i)-30).toFixed(1)}" y="${P.t}" width="60" height="${ih}" fill="transparent" data-i="${i}" class="hit"/>`;
+  });
+  $("trendBox").innerHTML=`<svg viewBox="0 0 ${W} ${H}" width="100%" style="max-width:${W}px" id="trendSvg">
+    <line class="axis" x1="${P.l}" y1="${P.t}" x2="${P.l}" y2="${P.t+ih}"/>
+    ${g}<path d="${path}" fill="none" stroke="#2563eb" stroke-width="2"/>${dots}${labs}${hit}</svg>
+    <div class="tipbox" id="trendTip"></div>`;
+  const svg=$("trendSvg"), tip=$("trendTip"), box=$("trendBox");
+  svg.querySelectorAll(".hit").forEach(h=>{
+    h.addEventListener("mousemove",e=>{
+      const i=+h.dataset.i;
+      const px=(x(i)/W)*box.querySelector('svg').clientWidth;
+      tip.style.left=px+"px"; tip.style.top=(y(totals[i])/H*box.querySelector('svg').clientHeight)+"px";
+      tip.innerHTML=`${state.months[ms[i]].label}　¥${yen(totals[i])}`; tip.style.opacity=1;
+    });
+    h.addEventListener("mouseleave",()=>tip.style.opacity=0);
+  });
+}
+
+function drawDept(ym){
+  const map=amountMap(ym);
+  const byDept={};
+  state.master.forEach(p=>{ const d=digits(p.phone); const v=(d in map)?map[d]:0; byDept[p.dept]=(byDept[p.dept]||0)+v; });
+  const depts=Object.keys(byDept); const max=Math.max(...depts.map(d=>byDept[d]),1);
+  const colors={"土木部":"#2563eb","営業部":"#0d9668","環境事業部":"#e0820a","共通":"#7c3aed"};
+  $("deptBox").innerHTML = depts.map(d=>{
+    const w=Math.round(byDept[d]/max*100);
+    const c=colors[d]||"#64748b";
+    return `<div style="display:flex;align-items:center;gap:10px;margin:6px 0">
+      <div style="width:96px;font-size:12.5px;font-weight:700">${esc(d)}</div>
+      <div style="flex:1;background:#eef1f5;border-radius:6px;height:22px;position:relative">
+        <div style="width:${w}%;background:${c};height:100%;border-radius:6px 4px 4px 6px"></div>
+      </div>
+      <div class="num" style="width:90px;font-weight:700">¥${yen(byDept[d])}</div></div>`;
+  }).join("");
+}
+
+function renderMatrix(){
+  const ki=curKi(); const {months,rows}=buildMatrix(ki);
+  if(!months.length){ $("matrixTbl").innerHTML=`<tr><td class="hint" style="padding:14px">${kiLabel(ki)} のデータはまだありません。</td></tr>`; return; }
+  let head=`<thead><tr><th>#</th><th>氏名</th><th>電話番号</th>`+months.map(ym=>`<th class="num">${mLabel(ym)}</th>`).join("")+`<th class="num">累計</th><th class="num">平均</th></tr></thead>`;
+  let body="", curDept=null, idx=0;
+  const deptTot=months.map(()=>0); let gtot=months.map(()=>0);
+  rows.forEach(r=>{
+    if(r.dept!==curDept){
+      if(curDept!==null) body+=deptTotRow(curDept,deptTot,months);
+      curDept=r.dept; for(let i=0;i<months.length;i++)deptTot[i]=0;
+      body+=`<tr class="dept"><td colspan="${months.length+5}">＜${esc(curDept)}＞</td></tr>`;
+    }
+    idx++;
+    let cells="";
+    r.vals.forEach((v,i)=>{
+      let cls="num";
+      if(v!=null){
+        deptTot[i]+=v; gtot[i]+=v;
+        const pv=i>0?r.vals[i-1]:null;
+        if(pv!=null){ const df=v-pv; if(df>=COMPARE_YEN)cls="num cUp"; else if(df<=-COMPARE_YEN)cls="num cDown"; }
+        else if(i>0){ cls="num cNew"; }
+      }
+      cells+=`<td class="${cls}">${v==null?"":yen(v)}</td>`;
+    });
+    const dupflag=r.dup?` <span class="flag f-dup">名簿重複</span>`:"";
+    body+=`<tr><td>${idx}</td><td>${nameCell(r,ki)}${dupflag}</td><td>${esc(r.phone||"")}</td>${cells}<td class="num" style="font-weight:700">${r.tot?yen(r.tot):""}</td><td class="num">${r.avg?yen(r.avg):""}</td></tr>`;
+  });
+  if(curDept!==null) body+=deptTotRow(curDept,deptTot,months);
+  body+=`<tr class="tot"><td colspan="3">全体合計</td>`+gtot.map(v=>`<td class="num">${yen(v)}</td>`).join("")+`<td class="num">${yen(gtot.reduce((a,b)=>a+b,0))}</td><td></td></tr>`;
+  $("matrixTbl").innerHTML=head+"<tbody>"+body+"</tbody>";
+}
+function deptTotRow(dept,arr,months){ return `<tr class="tot"><td colspan="3">${esc(dept)} 小計</td>`+arr.map(v=>`<td class="num">${yen(v)}</td>`).join("")+`<td class="num">${yen(arr.reduce((a,b)=>a+b,0))}</td><td></td></tr>`; }
+
+function renderMonthSel(){
+  const ki=curKi(); const ms=monthsOfKi(ki); const cur=$("monthSel").value;
+  $("monthSel").innerHTML=ms.map(ym=>`<option value="${ym}">${state.months[ym].label}</option>`).join("");
+  if(ms.length){ $("monthSel").value = ms.includes(cur)?cur:ms[ms.length-1]; }
+}
+function renderMonth(){
+  const ki=curKi(); const ym=$("monthSel").value; const ms=monthsOfKi(ki);
+  if(!ym||!state.months[ym]){ $("monthTiles").innerHTML=`<div class="hint">${kiLabel(ki)} のデータはまだありません。</div>`; $("monthTbl").innerHTML=""; $("monthExtra").innerHTML=""; return; }
+  const mo=state.months[ym]; const idx=ms.indexOf(ym); const prevYm=idx>0?ms[idx-1]:null;
+  const map=amountMap(ym), pmap=prevYm?amountMap(prevYm):null;
+  const okRec=(mo.grand==null)||(mo.sum===mo.grand);
+  const miss=state.master.filter(p=>p.phone&&p.phone!=='-'&&!(digits(p.phone) in map)).length;
+  const extra=extraFor(ym);
+  let big=0; state.master.forEach(p=>{ const d=digits(p.phone); if(pmap&&d in map&&d in pmap&&Math.abs(map[d]-pmap[d])>=COMPARE_YEN)big++; });
+  $("monthTiles").innerHTML=`
+    <div class="tile info"><div class="lab">請求月</div><div class="val" style="font-size:17px">${mo.label}</div></div>
+    <div class="tile info"><div class="lab">回線数 / 総額</div><div class="val" style="font-size:17px">${mo.records.length}件 ¥${yen(mo.sum)}</div></div>
+    <div class="tile ${okRec?'ok':'warn'}"><div class="lab">請求書総額と照合</div><div class="val" style="font-size:16px">${mo.grand==null?'—':(okRec?'✓ 一致':'⚠ 不一致')}</div></div>
+    <div class="tile ${miss?'warn':'ok'}"><div class="lab">名簿にあり請求に無し</div><div class="val">${miss}<small> 件</small></div></div>
+    <div class="tile ${extra.length?'warn':'ok'}"><div class="lab">請求にあり名簿に無し</div><div class="val">${extra.length}<small> 件</small></div></div>
+    <div class="tile ${big?'amb':'ok'}"><div class="lab">前月比±${yen(COMPARE_YEN)}円超</div><div class="val">${big}<small> 件</small></div></div>`;
+  const depts=[...new Set(state.master.map(p=>p.dept).filter(Boolean))];
+  $("monthExtra").innerHTML = extra.length? `<div class="extra">
+      <b>⚠ 請求書にあるが名簿に無い番号（${extra.length}件）</b>　新規や不明な契約の可能性。正しく自社の番号なら、部署と氏名を入れて<b>名簿に登録</b>できます（登録すると人×月マトリクスにも反映されます）。不明なものは請求元に確認を。
+      <datalist id="deptList">${depts.map(d=>`<option value="${esc(d)}">`).join("")}</datalist>
+      <div class="addlist">${extra.map(r=>`<div class="addrow" data-phone="${esc(r.phone)}">
+          <span class="ph">${esc(r.phone)}</span><span class="amt">¥${yen(r.total)}</span>
+          <input class="adept" list="deptList" placeholder="部署">
+          <input class="aname" placeholder="氏名">
+          <span class="sp"></span>
+          <button class="btn sm addbtn">名簿に追加</button>
+        </div>`).join("")}</div>
+    </div>`:"";
+  $("monthExtra").querySelectorAll(".addbtn").forEach(b=>b.addEventListener("click",()=>{
+    const row=b.closest(".addrow"); const phone=row.dataset.phone;
+    const dept=row.querySelector(".adept").value.trim(); const name=row.querySelector(".aname").value.trim();
+    addToRoster({dept:dept||"未分類", name:name, phone:phone, tl:{}});
+    save(); renderMaster(); rerenderData(); renderMonth();
+    toast(`名簿に追加しました：${phone}${name?'（'+name+'）':''}`);
+  }));
+  let head=`<thead><tr><th>#</th><th>氏名（${mo.label}時点）</th><th>電話番号</th><th class="num">${mo.label}</th><th class="num">前月</th><th class="num">差額</th><th>状態</th></tr></thead>`;
+  let body="",curDept=null,idx2=0;
+  state.master.forEach(p=>{
+    if(p.dept!==curDept){ curDept=p.dept; body+=`<tr class="dept"><td colspan="7">＜${esc(curDept)}＞</td></tr>`; }
+    idx2++;
+    const d=digits(p.phone); const v=(d in map)?map[d]:null; const pv=pmap&&(d in pmap)?pmap[d]:null;
+    const df=(v!=null&&pv!=null)?v-pv:null;
+    let st="",cls="";
+    if(!p.phone||p.phone==='-') st='<span class="flag" style="background:#eef1f5;color:#6b7684">番号なし</span>';
+    else if(v==null) st='<span class="flag f-miss">請求に無し</span>';
+    else if(df!=null&&Math.abs(df)>=COMPARE_YEN){ st=df>0?'<span class="flag f-miss">急増</span>':'<span class="flag" style="background:var(--blueBg);color:var(--blue)">減少</span>'; cls=df>0?'cUp':'cDown'; }
+    else st='<span class="flag" style="background:var(--greenBg);color:var(--green)">一致</span>';
+    const dfTxt=df==null?"":(df>0?`<span class="up">+${yen(df)}</span>`:(df<0?`<span class="down">${yen(df)}</span>`:"0"));
+    const hname=holderAt(p,ki,ym)||p.name||"";
+    const chgMark=hasHandover(p,ki)&&hname!==(p.name||"")?' <span class="flag" style="background:var(--amberBg);color:var(--amber)">交代後</span>':'';
+    body+=`<tr><td>${idx2}</td><td><span class="nmnm">${esc(hname)}</span>${chgMark}</td><td>${esc(p.phone||"")}</td><td class="num ${cls}">${v==null?"":"¥"+yen(v)}</td><td class="num">${pv==null?"":"¥"+yen(pv)}</td><td class="num">${dfTxt}</td><td>${st}</td></tr>`;
+  });
+  $("monthTbl").innerHTML=head+"<tbody>"+body+"</tbody>";
+}
+
+function renderMaster(){
+  const ki=curKi();
+  const dup=dupPhones();
+  $("dupWarn").innerHTML = dup.size? `<div class="extra" style="background:var(--purpleBg);border-color:#d6c5f6"><b>電話番号が重複しています（${dup.size}件）</b>：${[...dup].join(", ")}</div>`:"";
+  const chMonths=kiChangeMonths(ki);
+  let head=`<thead><tr><th>#</th><th>部署</th><th>氏名（基準）</th><th>電話番号</th><th>${kiLabel(ki)} の担当交代</th><th></th></tr></thead>`;
+  let body=state.master.map((p,i)=>{
+    const chg=(p.tl&&p.tl[ki]?p.tl[ki]:[]);
+    let tl = chg.map((e,j)=>{
+      const opts = chMonths.map(m=>`<option value="${m}" ${e.from===m?'selected':''}>${monthNum(m)}月から</option>`).join("");
+      return `<div class="tlrow">
+        <select data-i="${i}" data-j="${j}" data-tf="from"><option value="">月を選択</option>${opts}</select>
+        <input type="text" data-i="${i}" data-j="${j}" data-tf="name" value="${esc(e.name||'')}" placeholder="新しい氏名">
+        <button class="x" data-tdel="${i}" data-j="${j}" title="削除">×</button>
+      </div>`;
+    }).join("");
+    return `<tr>
+      <td>${i+1}</td>
+      <td><input data-i="${i}" data-f="dept" value="${esc(p.dept||'')}"></td>
+      <td><input data-i="${i}" data-f="name" value="${esc(p.name||'')}"></td>
+      <td><input data-i="${i}" data-f="phone" value="${esc(p.phone||'')}"></td>
+      <td class="tlcell"><div class="base">開始担当：${esc(startHolder(p,ki)||'（未入力）')}（7月〜）</div>${tl}<button class="tladd" data-tadd="${i}">＋交代</button></td>
+      <td style="white-space:nowrap">
+        <button class="btn ghost sm" data-mv="up" data-i="${i}">↑</button>
+        <button class="btn ghost sm" data-mv="down" data-i="${i}">↓</button>
+        <button class="btn ghost sm" data-del="${i}" style="color:var(--red)">削除</button>
+      </td></tr>`;
+  }).join("");
+  $("masterTbl").innerHTML=head+"<tbody>"+body+"</tbody>";
+  // base fields
+  $("masterTbl").querySelectorAll("input[data-f]").forEach(inp=>{
+    inp.addEventListener("change",()=>{ state.master[+inp.dataset.i][inp.dataset.f]=inp.value; save(); renderMaster(); rerenderData(); });
+  });
+  // handover fields
+  $("masterTbl").querySelectorAll("[data-tf]").forEach(el=>{
+    el.addEventListener("change",()=>{ const i=+el.dataset.i,j=+el.dataset.j; ensureTl(i,ki); state.master[i].tl[ki][j][el.dataset.tf]=el.value; save(); renderMaster(); rerenderData(); });
+  });
+  $("masterTbl").querySelectorAll("[data-tadd]").forEach(b=>b.addEventListener("click",()=>{ const i=+b.dataset.tadd; ensureTl(i,ki); state.master[i].tl[ki].push({from:"",name:""}); save(); renderMaster(); }));
+  $("masterTbl").querySelectorAll("[data-tdel]").forEach(b=>b.addEventListener("click",()=>{ const i=+b.dataset.tdel,j=+b.dataset.j; state.master[i].tl[ki].splice(j,1); if(!state.master[i].tl[ki].length) delete state.master[i].tl[ki]; save(); renderMaster(); rerenderData(); }));
+  // row ops
+  $("masterTbl").querySelectorAll("[data-del]").forEach(b=>b.addEventListener("click",()=>{ const i=+b.dataset.del; const p=state.master[i]; if(!confirm(`この行を名簿から削除します。\n　${p.name||'(氏名なし)'}　${p.phone||''}\nよろしいですか？`)) return; state.master.splice(i,1); save(); renderMaster(); rerenderData(); }));
+  $("masterTbl").querySelectorAll("[data-mv]").forEach(b=>b.addEventListener("click",()=>{ const i=+b.dataset.i,j=b.dataset.mv==='up'?i-1:i+1; if(j<0||j>=state.master.length)return; const t=state.master[i];state.master[i]=state.master[j];state.master[j]=t; save(); renderMaster(); rerenderData(); }));
+}
+function ensureTl(i,ki){ const p=state.master[i]; if(!p.tl)p.tl={}; if(!p.tl[ki])p.tl[ki]=[]; }
+// 同じ部署の最後の行の直後に挿入（部署グループを崩さない）。無ければ末尾。
+function addToRoster(entry){
+  let idx=-1;
+  for(let i=0;i<state.master.length;i++){ if(state.master[i].dept===entry.dept) idx=i; }
+  if(idx>=0) state.master.splice(idx+1,0,entry); else state.master.push(entry);
+}
+
+function renderAll(){ renderStatus(); renderChips(); renderKibar(); renderDashboard(); renderMatrix(); renderMonthSel(); renderMonth(); renderMaster(); }
+function rerenderData(){ renderChips(); renderKibar(); renderDashboard(); renderMatrix(); renderMonth(); }
+
+// ================= EVENTS =================
+document.querySelectorAll(".tab").forEach(t=>t.addEventListener("click",()=>{
+  document.querySelectorAll(".tab").forEach(x=>x.classList.remove("active"));
+  document.querySelectorAll(".pane").forEach(x=>x.classList.remove("active"));
+  t.classList.add("active"); $("pane-"+t.dataset.pane).classList.add("active");
+  if(t.dataset.pane==='dash') renderDashboard();
+}));
+
+const drop=$("drop"), pdfIn=$("pdfIn");
+drop.onclick=()=>pdfIn.click();
+pdfIn.onchange=e=>loadFiles([...e.target.files]);
+["dragenter","dragover"].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.add("drag");}));
+["dragleave","drop"].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.remove("drag");}));
+drop.addEventListener("drop",e=>{ if(e.dataTransfer.files.length) loadFiles([...e.dataTransfer.files]); });
+
+async function loadFiles(files){
+  files=files.filter(f=>f.type==="application/pdf"||f.name.toLowerCase().endsWith(".pdf"));
+  if(!files.length){ toast("PDFを選んでください"); return; }
+  $("loadStatus").textContent="読み込み中… "+files.length+"件";
+  let ok=0,ng=0,dupd=0,newest=null;
+  for(const f of files){
+    try{
+      const buf=await f.arrayBuffer(); const r=await parsePdf(buf);
+      if(!r.ym||r.records.length===0){ ng++; continue; }
+      if(state.months[r.ym]) dupd++;
+      state.months[r.ym]={label:r.label,records:r.records,grand:r.grand,sum:r.sum,lineCount:r.lineCount,fileName:f.name};
+      if(!newest||r.ym>newest) newest=r.ym;
+      ok++;
+    }catch(e){ ng++; console.error(e); }
+  }
+  if(newest) state.currentKi=kiNumOf(newest);
+  save(); renderAll();
+  $("loadStatus").innerHTML=`✓ 取込 ${ok}件${dupd?`（うち上書き ${dupd}件）`:""}${ng?` ／ <span style="color:#dc2626">失敗 ${ng}件</span>`:""}`;
+  toast(`${ok}か月分を取り込みました`);
+}
+
+$("monthSel").addEventListener("change",renderMonth);
+
+$("copyCol").onclick=()=>{
+  const ym=$("monthSel").value; if(!ym){toast("月がありません");return;} const map=amountMap(ym);
+  const col=state.master.map(p=>{ const d=digits(p.phone); return (d in map)?map[d]:""; });
+  navigator.clipboard.writeText(col.join("\n")).then(()=>toast("金額列をコピーしました（名簿順）"));
+};
+function dl(blob,name){ const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download=name; a.click(); }
+function csv(rows){ return "﻿"+rows.map(r=>r.map(x=>`"${x==null?"":x}"`).join(",")).join("\r\n"); }
+$("dlMonthCsv").onclick=()=>{
+  const ki=curKi(); const ym=$("monthSel").value; if(!ym){toast("月がありません");return;} const map=amountMap(ym);
+  const rows=[["部署","氏名（当月担当）","電話番号",state.months[ym].label]];
+  state.master.forEach(p=>{ const d=digits(p.phone); rows.push([p.dept,holderAt(p,ki,ym)||p.name,p.phone,(d in map)?map[d]:""]); });
+  dl(new Blob([csv(rows)],{type:"text/csv"}), `携帯料金_${ym}.csv`);
+};
+$("dlMatrix").onclick=()=>{
+  const ki=curKi(); const {months,rows}=buildMatrix(ki);
+  const nmeOf=r=>timelineOf(r,ki).map((e,i)=>i===0?e.name:`${monthNum(e.from)}月〜${e.name}`).join(" / ");
+  const head=["部署","氏名（交代含む）","電話番号",...months.map(mLabel),"累計","平均"];
+  const body=rows.map(r=>[r.dept,nmeOf(r),r.phone,...r.vals.map(v=>v==null?"":v),r.tot,r.avg==null?"":r.avg]);
+  dl(new Blob([csv([head,...body])],{type:"text/csv"}), `携帯料金_マトリクス_${kiLabel(ki)}.csv`);
+};
+
+$("addRow").onclick=()=>{ const last=state.master[state.master.length-1]; state.master.push({dept:last?last.dept:"",name:"",phone:"",tl:{}}); save(); renderMaster(); };
+$("bulkToggle").onclick=()=>{ const a=$("bulkArea"); a.style.display=a.style.display==="none"?"block":"none"; $("bulkText").value=state.master.map(p=>`${p.dept},${p.name},${p.phone}`).join("\n"); };
+$("bulkApply").onclick=()=>{ const nr=[]; $("bulkText").value.split(/\r?\n/).forEach(l=>{ l=l.trim(); if(!l)return; const c=l.split(","); if(c.length>=3)nr.push({dept:c[0].trim(),name:c[1].trim(),phone:c.slice(2).join(",").trim(),tl:{}});}); if(nr.length){ state.master=nr; save(); renderMaster(); rerenderData(); toast("名簿を反映（"+nr.length+"件）※担当交代はリセットされます"); } };
+
+$("anchorApply").onclick=()=>{ const n=parseInt($("anchorNum").value,10), y=parseInt($("anchorYear").value,10); if(!n||!y){toast("数値を入力してください");return;} state.kiAnchor={num:n,startYear:y}; save(); renderAll(); toast("基準を更新しました"); };
+
+$("exportJson").onclick=()=>{ dl(new Blob([JSON.stringify(state,null,1)],{type:"application/json"}), "携帯料金_データ.json"); };
+$("importJson").onclick=()=>$("jsonIn").click();
+$("jsonIn").onchange=e=>{ const f=e.target.files[0]; if(!f)return; const rd=new FileReader(); rd.onload=()=>{ try{ const o=JSON.parse(rd.result); if(o&&o.master){ state=o; migrate(); save(); renderAll(); toast("データを読み込みました"); } else toast("形式が違います"); }catch(err){ toast("読み込み失敗"); } }; rd.readAsText(f); };
+$("clearAll").onclick=()=>{ if(confirm("取り込んだ月データを全て消去します（名簿は既定に戻ります）。よろしいですか？")){ state={master:DEFAULT_ROSTER.slice().map(p=>({...p,tl:{}})),months:{},kiAnchor:{num:40,startYear:2025},extraKi:[],currentKi:null}; save(); renderAll(); toast("消去しました"); } };
+
+// ================= SHARED (GAS) SYNC =================
+const SYNC_KEY = "keitai_sync_cfg";
+let syncCfg = { url:"", token:"", by:"", auto:true, rev:0 };
+let pushTimer = null, pushing = false;
+
+function loadSyncCfg(){
+  try{ const s=localStorage.getItem(SYNC_KEY); if(s){ syncCfg=Object.assign(syncCfg, JSON.parse(s)); } }catch(e){}
+  // HTMLに焼き込んだ設定があれば優先（URLはデプロイに追従、トークンは未使用）
+  if(typeof BAKED_SYNC!=='undefined' && BAKED_SYNC && BAKED_SYNC.url){
+    syncCfg.url = BAKED_SYNC.url;
+    syncCfg.token = BAKED_SYNC.token || "";
+    if(typeof BAKED_SYNC.auto==='boolean') syncCfg.auto = BAKED_SYNC.auto;
+    syncCfg.baked = true;
+  }
+}
+function saveSyncCfg(){ try{ localStorage.setItem(SYNC_KEY, JSON.stringify(syncCfg)); }catch(e){} }
+function syncOn(){ return !!syncCfg.url; }
+
+function setSync(state, msg){
+  const dot=$("syncDot"); dot.className="syncdot"+(state?(" "+state):"");
+  if(msg!=null) $("syncStatus").textContent=msg;
+}
+function fmtTime(iso){ if(!iso)return""; const d=new Date(iso); if(isNaN(d))return iso; const p=n=>String(n).padStart(2,"0"); return `${d.getFullYear()}/${p(d.getMonth()+1)}/${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`; }
+
+// 共有対象データ（currentKi と 同期設定は含めない＝各自ローカル）
+function sharedData(){ return { master:state.master, months:state.months, kiAnchor:state.kiAnchor, extraKi:state.extraKi }; }
+function applyShared(d){
+  if(!d) return;
+  state.master = Array.isArray(d.master)? d.master : [];
+  state.months = d.months || {};
+  state.kiAnchor = d.kiAnchor || {num:40,startYear:2025};
+  state.extraKi = d.extraKi || [];
+  migrate();
+}
+
+async function gasCall(payload){
+  if(!syncCfg.url) throw new Error("URL未設定");
+  const res = await fetch(syncCfg.url, {
+    method:"POST",
+    headers:{"Content-Type":"text/plain;charset=utf-8"}, // simple request（プリフライト回避）
+    body: JSON.stringify(Object.assign({token:syncCfg.token||""}, payload)),
+    redirect:"follow"
+  });
+  const txt = await res.text();
+  let o; try{ o=JSON.parse(txt); }catch(e){ throw new Error("応答が不正（HTMLが返っている可能性）: "+txt.slice(0,80)); }
+  return o;
+}
+
+async function pullShared(opts){
+  opts=opts||{};
+  if(!syncOn()){ return; }
+  setSync("busy","共有DBから取得中…");
+  try{
+    const o = await gasCall({action:"load"});
+    if(!o.ok){
+      if(o.error==="unauthorized"){ setSync("err","トークンが違います（アクセス拒否）"); }
+      else setSync("err","取得失敗: "+(o.error||""));
+      return o;
+    }
+    syncCfg.rev = o.rev||0; saveSyncCfg();
+    if(o.data){
+      applyShared(o.data);
+      try{ localStorage.setItem(STORE_KEY, JSON.stringify(state)); }catch(e){}
+      renderAll();
+      setSync("on", `共有DBと同期済み（更新: ${fmtTime(o.updatedAt)}${o.updatedBy?" / "+o.updatedBy:""}）`);
+    }else{
+      setSync("warn","共有DBは空です。『今すぐ共有に保存』で初期データを登録できます");
+    }
+    return o;
+  }catch(e){ setSync("err","取得エラー: "+e.message); return {ok:false,error:e.message}; }
+}
+
+function schedulePush(){
+  if(!syncOn() || !syncCfg.auto) return;
+  clearTimeout(pushTimer);
+  pushTimer=setTimeout(pushShared, 900);
+}
+async function pushShared(manual){
+  if(!syncOn()){ if(manual) toast("先にGAS URLを設定してください"); return; }
+  if(pushing){ clearTimeout(pushTimer); pushTimer=setTimeout(pushShared,600); return; }
+  pushing=true; setSync("busy","共有DBへ保存中…");
+  try{
+    const o = await gasCall({action:"save", rev:syncCfg.rev||0, data:sharedData(), by:syncCfg.by||""});
+    if(o.ok){
+      syncCfg.rev=o.rev; saveSyncCfg();
+      setSync("on", `共有DBに保存済み（${fmtTime(o.updatedAt)}${o.updatedBy?" / "+o.updatedBy:""}）`);
+      if(manual) toast("共有DBに保存しました");
+    }else if(o.error==="conflict"){
+      setSync("warn","競合：他の人が先に更新しました。最新を取り込みます");
+      await pullShared();
+      toast("他の人の更新を取り込みました。編集し直して保存してください");
+    }else if(o.error==="unauthorized"){
+      setSync("err","トークンが違います（保存拒否）");
+    }else{
+      setSync("err","保存失敗: "+(o.error||""));
+    }
+  }catch(e){ setSync("err","保存エラー: "+e.message); }
+  finally{ pushing=false; }
+}
+
+// wiring
+$("syncToggle").onclick=()=>$("syncCfg").classList.toggle("show");
+$("cfgUrl").addEventListener("input",()=>{});
+function readCfgInputs(){ syncCfg.url=$("cfgUrl").value.trim(); syncCfg.token=$("cfgToken").value.trim(); syncCfg.by=$("cfgBy").value.trim(); syncCfg.auto=$("cfgAuto").checked; }
+$("cfgSaveBtn").onclick=()=>{ readCfgInputs(); saveSyncCfg(); toast("設定を保存しました"); if(syncOn()){ setSync("warn","設定済み。『最新を取得』で共有DBを読み込めます"); pullShared(); } else setSync("","未設定（このブラウザ内のみ保存）"); };
+$("cfgTest").onclick=async()=>{ readCfgInputs(); saveSyncCfg(); if(!syncCfg.url){ toast("URLを入れてください"); return; } setSync("busy","接続テスト中…"); try{ const o=await gasCall({action:"ping"}); if(o.ok){ setSync("on",`接続OK（rev ${o.rev} / データ${o.hasData?"あり":"なし"}${o.updatedAt?" / 更新 "+fmtTime(o.updatedAt):""}）`); toast("接続OK"); } else if(o.error==="unauthorized"){ setSync("err","トークンが違います"); } else setSync("err","応答: "+(o.error||"")); }catch(e){ setSync("err","接続エラー: "+e.message); } };
+$("cfgPushNow").onclick=()=>{ readCfgInputs(); saveSyncCfg(); pushShared(true); };
+$("syncPull").onclick=()=>{ if(!syncOn()){ $("syncCfg").classList.add("show"); toast("先にGAS URLを設定してください"); return; } pullShared(); };
+
+function initSync(){
+  loadSyncCfg();
+  $("cfgUrl").value=syncCfg.url||""; $("cfgToken").value=syncCfg.token||""; $("cfgBy").value=syncCfg.by||""; $("cfgAuto").checked=syncCfg.auto!==false;
+  // HTMLにURLを焼き込んである場合は、共有(GAS)のUIカードを隠して裏で同期のみ動かす
+  if(syncCfg.baked){ const c=document.querySelector(".synccard"); if(c) c.style.display="none"; }
+  if(syncOn()){ setSync("warn","共有DBに接続中…"); pullShared(); }
+  else setSync("","未設定（このブラウザ内のみ保存）");
+}
+
+// init
+load(); renderAll(); initSync();
+</script>
+</body>
+</html>
