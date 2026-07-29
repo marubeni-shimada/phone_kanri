@@ -251,6 +251,8 @@
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;align-items:center">
         <button class="btn sm" id="addRow">＋ 行を追加</button>
         <button class="btn sec sm" id="bulkToggle">まとめて編集（テキスト）</button>
+        <input type="text" id="masterSearch" placeholder="🔍 氏名・電話番号・部署で検索" style="min-width:220px">
+        <span class="hint" id="masterCount" style="margin:0"></span>
         <span class="hint" style="margin:0">氏名・電話番号・部署を編集。番号はそのままで人が代わったときは、氏名を上書きせず<b>「＋交代」</b>で交代月と新しい氏名を追加してください（<span id="masterKiLabel"></span>の交代だけを記録します）。</span>
       </div>
       <div id="dupWarn"></div>
@@ -636,7 +638,8 @@ function renderMaster(){
         <button class="x" data-tdel="${i}" data-j="${j}" title="削除">×</button>
       </div>`;
     }).join("");
-    return `<tr>
+    const sstr=`${p.dept||''} ${p.name||''} ${p.phone||''} ${digits(p.phone)}`.toLowerCase();
+    return `<tr data-search="${esc(sstr)}">
       <td>${i+1}</td>
       <td><input data-i="${i}" data-f="dept" value="${esc(p.dept||'')}"></td>
       <td><input data-i="${i}" data-f="name" value="${esc(p.name||'')}"></td>
@@ -648,7 +651,9 @@ function renderMaster(){
         <button class="btn ghost sm" data-del="${i}" style="color:var(--red)">削除</button>
       </td></tr>`;
   }).join("");
+  if(!state.master.length){ body=`<tr class="emptyhint"><td colspan="6" class="hint" style="padding:16px">名簿がまだありません。共有DBに接続するか、右上の「データ読み込み(JSON)」で取り込むと表示されます。「＋ 行を追加」で手入力もできます。</td></tr>`; }
   $("masterTbl").innerHTML=head+"<tbody>"+body+"</tbody>";
+  applyMasterFilter();
   // base fields
   $("masterTbl").querySelectorAll("input[data-f]").forEach(inp=>{
     inp.addEventListener("change",()=>{ state.master[+inp.dataset.i][inp.dataset.f]=inp.value; save(); renderMaster(); rerenderData(); });
@@ -664,6 +669,14 @@ function renderMaster(){
   $("masterTbl").querySelectorAll("[data-mv]").forEach(b=>b.addEventListener("click",()=>{ const i=+b.dataset.i,j=b.dataset.mv==='up'?i-1:i+1; if(j<0||j>=state.master.length)return; const t=state.master[i];state.master[i]=state.master[j];state.master[j]=t; save(); renderMaster(); rerenderData(); }));
 }
 function ensureTl(i,ki){ const p=state.master[i]; if(!p.tl)p.tl={}; if(!p.tl[ki])p.tl[ki]=[]; }
+function applyMasterFilter(){
+  const box=$("masterSearch"); if(!box) return;
+  const q=(box.value||"").trim().toLowerCase();
+  const rows=$("masterTbl").querySelectorAll("tbody tr");
+  let shown=0, total=0;
+  rows.forEach(tr=>{ if(tr.classList.contains("emptyhint")){ return; } total++; const s=tr.getAttribute("data-search")||""; const hit=!q||s.includes(q); tr.style.display=hit?"":"none"; if(hit)shown++; });
+  const c=$("masterCount"); if(c) c.textContent = total? (q? `${shown} / ${total} 件` : `${total} 件`) : "";
+}
 // 同じ部署の最後の行の直後に挿入（部署グループを崩さない）。無ければ末尾。
 function addToRoster(entry){
   let idx=-1;
@@ -861,6 +874,9 @@ function initSync(){
   if(syncOn()){ setSync("warn","共有DBに接続中…"); pullShared(); }
   else setSync("","未設定（このブラウザ内のみ保存）");
 }
+
+// master search
+$("masterSearch").addEventListener("input", applyMasterFilter);
 
 // init
 load(); renderAll(); initSync();
