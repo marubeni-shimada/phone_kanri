@@ -122,6 +122,8 @@
   .tlrow .x{color:var(--red);border:none;background:none;cursor:pointer;font-weight:800;font-size:14px;padding:0 4px;}
   .tladd{font-size:11.5px;color:var(--blue);background:var(--blueBg);border:1px solid #c4d8fb;border-radius:8px;padding:3px 9px;font-weight:700;cursor:pointer;}
   .base{font-size:11px;color:var(--muted);font-weight:700;}
+  .notemk{font-size:10.5px;color:var(--amber);margin-top:2px;white-space:normal;max-width:230px;line-height:1.35;}
+  .masterTbl .notein{min-width:160px;}
   .code{background:#eef1f5;padding:1px 6px;border-radius:5px;font-size:12px;}
   /* sync (GAS) */
   .synccard{padding:11px 16px;}
@@ -554,7 +556,8 @@ function renderMatrix(){
       cells+=`<td class="${cls}">${v==null?"":yen(v)}</td>`;
     });
     const dupflag=r.dup?` <span class="flag f-dup">名簿重複</span>`:"";
-    body+=`<tr><td>${idx}</td><td>${nameCell(r,ki)}${dupflag}</td><td>${esc(r.phone||"")}</td>${cells}<td class="num" style="font-weight:700">${r.tot?yen(r.tot):""}</td><td class="num">${r.avg?yen(r.avg):""}</td></tr>`;
+    const noteMk=r.note?`<div class="notemk">📝 ${esc(r.note)}</div>`:"";
+    body+=`<tr><td>${idx}</td><td>${nameCell(r,ki)}${dupflag}${noteMk}</td><td>${esc(r.phone||"")}</td>${cells}<td class="num" style="font-weight:700">${r.tot?yen(r.tot):""}</td><td class="num">${r.avg?yen(r.avg):""}</td></tr>`;
   });
   if(curDept!==null) body+=deptTotRow(curDept,deptTot,months);
   body+=`<tr class="tot"><td colspan="3">全体合計</td>`+gtot.map(v=>`<td class="num">${yen(v)}</td>`).join("")+`<td class="num">${yen(gtot.reduce((a,b)=>a+b,0))}</td><td></td></tr>`;
@@ -617,7 +620,8 @@ function renderMonth(){
     const dfTxt=df==null?"":(df>0?`<span class="up">+${yen(df)}</span>`:(df<0?`<span class="down">${yen(df)}</span>`:"0"));
     const hname=holderAt(p,ki,ym)||p.name||"";
     const chgMark=hasHandover(p,ki)&&hname!==(p.name||"")?' <span class="flag" style="background:var(--amberBg);color:var(--amber)">交代後</span>':'';
-    body+=`<tr><td>${idx2}</td><td><span class="nmnm">${esc(hname)}</span>${chgMark}</td><td>${esc(p.phone||"")}</td><td class="num ${cls}">${v==null?"":"¥"+yen(v)}</td><td class="num">${pv==null?"":"¥"+yen(pv)}</td><td class="num">${dfTxt}</td><td>${st}</td></tr>`;
+    const noteMk2=p.note?`<div class="notemk">📝 ${esc(p.note)}</div>`:"";
+    body+=`<tr><td>${idx2}</td><td><span class="nmnm">${esc(hname)}</span>${chgMark}${noteMk2}</td><td>${esc(p.phone||"")}</td><td class="num ${cls}">${v==null?"":"¥"+yen(v)}</td><td class="num">${pv==null?"":"¥"+yen(pv)}</td><td class="num">${dfTxt}</td><td>${st}</td></tr>`;
   });
   $("monthTbl").innerHTML=head+"<tbody>"+body+"</tbody>";
 }
@@ -627,7 +631,7 @@ function renderMaster(){
   const dup=dupPhones();
   $("dupWarn").innerHTML = dup.size? `<div class="extra" style="background:var(--purpleBg);border-color:#d6c5f6"><b>電話番号が重複しています（${dup.size}件）</b>：${[...dup].join(", ")}</div>`:"";
   const chMonths=kiChangeMonths(ki);
-  let head=`<thead><tr><th>#</th><th>部署</th><th>氏名（基準）</th><th>電話番号</th><th>${kiLabel(ki)} の担当交代</th><th></th></tr></thead>`;
+  let head=`<thead><tr><th>#</th><th>部署</th><th>氏名（基準）</th><th>電話番号</th><th>${kiLabel(ki)} の担当交代</th><th>備考（端末交換・GB変更など）</th><th></th></tr></thead>`;
   let body=state.master.map((p,i)=>{
     const chg=(p.tl&&p.tl[ki]?p.tl[ki]:[]);
     let tl = chg.map((e,j)=>{
@@ -638,20 +642,21 @@ function renderMaster(){
         <button class="x" data-tdel="${i}" data-j="${j}" title="削除">×</button>
       </div>`;
     }).join("");
-    const sstr=`${p.dept||''} ${p.name||''} ${p.phone||''} ${digits(p.phone)}`.toLowerCase();
+    const sstr=`${p.dept||''} ${p.name||''} ${p.phone||''} ${digits(p.phone)} ${p.note||''}`.toLowerCase();
     return `<tr data-search="${esc(sstr)}">
       <td>${i+1}</td>
       <td><input data-i="${i}" data-f="dept" value="${esc(p.dept||'')}"></td>
       <td><input data-i="${i}" data-f="name" value="${esc(p.name||'')}"></td>
       <td><input data-i="${i}" data-f="phone" value="${esc(p.phone||'')}"></td>
       <td class="tlcell"><div class="base">開始担当：${esc(startHolder(p,ki)||'（未入力）')}（7月〜）</div>${tl}<button class="tladd" data-tadd="${i}">＋交代</button></td>
+      <td><input class="notein" data-i="${i}" data-f="note" value="${esc(p.note||'')}" placeholder="例）2026-05 端末交換 / GB 3→20"></td>
       <td style="white-space:nowrap">
         <button class="btn ghost sm" data-mv="up" data-i="${i}">↑</button>
         <button class="btn ghost sm" data-mv="down" data-i="${i}">↓</button>
         <button class="btn ghost sm" data-del="${i}" style="color:var(--red)">削除</button>
       </td></tr>`;
   }).join("");
-  if(!state.master.length){ body=`<tr class="emptyhint"><td colspan="6" class="hint" style="padding:16px">名簿がまだありません。共有DBに接続するか、右上の「データ読み込み(JSON)」で取り込むと表示されます。「＋ 行を追加」で手入力もできます。</td></tr>`; }
+  if(!state.master.length){ body=`<tr class="emptyhint"><td colspan="7" class="hint" style="padding:16px">名簿がまだありません。共有DBに接続するか、右上の「データ読み込み(JSON)」で取り込むと表示されます。「＋ 行を追加」で手入力もできます。</td></tr>`; }
   $("masterTbl").innerHTML=head+"<tbody>"+body+"</tbody>";
   applyMasterFilter();
   // base fields
@@ -734,15 +739,15 @@ function dl(blob,name){ const a=document.createElement("a"); a.href=URL.createOb
 function csv(rows){ return "﻿"+rows.map(r=>r.map(x=>`"${x==null?"":x}"`).join(",")).join("\r\n"); }
 $("dlMonthCsv").onclick=()=>{
   const ki=curKi(); const ym=$("monthSel").value; if(!ym){toast("月がありません");return;} const map=amountMap(ym);
-  const rows=[["部署","氏名（当月担当）","電話番号",state.months[ym].label]];
-  state.master.forEach(p=>{ const d=digits(p.phone); rows.push([p.dept,holderAt(p,ki,ym)||p.name,p.phone,(d in map)?map[d]:""]); });
+  const rows=[["部署","氏名（当月担当）","電話番号",state.months[ym].label,"備考"]];
+  state.master.forEach(p=>{ const d=digits(p.phone); rows.push([p.dept,holderAt(p,ki,ym)||p.name,p.phone,(d in map)?map[d]:"",p.note||""]); });
   dl(new Blob([csv(rows)],{type:"text/csv"}), `携帯料金_${ym}.csv`);
 };
 $("dlMatrix").onclick=()=>{
   const ki=curKi(); const {months,rows}=buildMatrix(ki);
   const nmeOf=r=>timelineOf(r,ki).map((e,i)=>i===0?e.name:`${monthNum(e.from)}月〜${e.name}`).join(" / ");
-  const head=["部署","氏名（交代含む）","電話番号",...months.map(mLabel),"累計","平均"];
-  const body=rows.map(r=>[r.dept,nmeOf(r),r.phone,...r.vals.map(v=>v==null?"":v),r.tot,r.avg==null?"":r.avg]);
+  const head=["部署","氏名（交代含む）","電話番号",...months.map(mLabel),"累計","平均","備考"];
+  const body=rows.map(r=>[r.dept,nmeOf(r),r.phone,...r.vals.map(v=>v==null?"":v),r.tot,r.avg==null?"":r.avg,r.note||""]);
   dl(new Blob([csv([head,...body])],{type:"text/csv"}), `携帯料金_マトリクス_${kiLabel(ki)}.csv`);
 };
 
