@@ -207,6 +207,7 @@
     <button class="tab active" data-pane="dash">ダッシュボード</button>
     <button class="tab" data-pane="matrix">人 × 月マトリクス</button>
     <button class="tab" data-pane="month">単月チェック</button>
+    <button class="tab" data-pane="hoshu">保守料金</button>
     <button class="tab" data-pane="master">マスタ（名簿）</button>
   </div>
 
@@ -244,6 +245,17 @@
       <div class="tiles" id="monthTiles"></div>
       <div id="monthExtra"></div>
       <div class="tblwrap" style="margin-top:12px"><table id="monthTbl"></table></div>
+    </div>
+  </div>
+
+  <!-- HOSHU (maintenance) -->
+  <div class="pane" id="pane-hoshu">
+    <div class="card">
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px">
+        <button class="btn sm" id="dlHoshu">部署別内訳をCSV出力</button>
+        <span class="hint" style="margin:0">名簿の「機種」×単価で保守料を<b>部署別に自動按分</b>します。請求書（税込）を入れると自動計算額と照合できます。機種は「マスタ（名簿）」タブで設定します。</span>
+      </div>
+      <div id="hoshuBox"></div>
     </div>
   </div>
 
@@ -295,6 +307,7 @@ let __pdfReady = Promise.resolve();
 const DEFAULT_ROSTER = [];
 const COMPARE_YEN = 1000;
 const STORE_KEY = "keitai_dashboard_v1";
+const DEPTS = ["土木部","営業部","統括管理部","共通"];
 
 const $ = id=>document.getElementById(id);
 const digits = s=>(s||"").replace(/[^0-9]/g,"");
@@ -302,7 +315,8 @@ const yen = n=>(n==null||n==="")?"":Number(n).toLocaleString("ja-JP");
 const esc = s=>(s||"").replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 function toast(m){const t=$("toast");t.textContent=m;t.classList.add("show");setTimeout(()=>t.classList.remove("show"),1600);}
 
-let state = { master: DEFAULT_ROSTER.slice(), months: {}, kiAnchor:{num:40,startYear:2025}, extraKi:[], currentKi:null };
+let state = { master: DEFAULT_ROSTER.slice(), months: {}, kiAnchor:{num:40,startYear:2025}, extraKi:[], currentKi:null,
+  hoshuPrices:[{model:"iPhone16e",price:600,invQty:33},{model:"iPhoneSE",price:500,invQty:9},{model:"iPhone12",price:600,invQty:1},{model:"iPad",price:500,invQty:1}], hoshuInvoice:{amount:null} };
 
 // ---- persistence ----
 function save(){ try{ localStorage.setItem(STORE_KEY, JSON.stringify(state)); }catch(e){} renderStatus(); schedulePush(); }
@@ -315,6 +329,9 @@ function migrate(){
   state.extraKi = state.extraKi||[];
   if(state.currentKi===undefined) state.currentKi=null;
   state.master.forEach(p=>{ if(!p.tl) p.tl={}; });
+  if(!state.hoshuPrices) state.hoshuPrices=[{model:"iPhone16e",price:600,invQty:33},{model:"iPhoneSE",price:500,invQty:9},{model:"iPhone12",price:600,invQty:1},{model:"iPad",price:500,invQty:1}];
+  state.hoshuPrices.forEach(p=>{ if(p.invQty===undefined) p.invQty=0; });
+  if(!state.hoshuInvoice) state.hoshuInvoice={amount:null};
 }
 
 function normalize(s){ s=s.normalize('NFKC'); for(const d of ['−','－','‐','―','—','–','ｰ']) s=s.split(d).join('-'); return s; }
@@ -631,7 +648,7 @@ function renderMaster(){
   const dup=dupPhones();
   $("dupWarn").innerHTML = dup.size? `<div class="extra" style="background:var(--purpleBg);border-color:#d6c5f6"><b>電話番号が重複しています（${dup.size}件）</b>：${[...dup].join(", ")}</div>`:"";
   const chMonths=kiChangeMonths(ki);
-  let head=`<thead><tr><th>#</th><th>部署</th><th>氏名（基準）</th><th>電話番号</th><th>${kiLabel(ki)} の担当交代</th><th>備考（端末交換・GB変更など）</th><th></th></tr></thead>`;
+  let head=`<thead><tr><th>#</th><th>部署</th><th>氏名（基準）</th><th>電話番号</th><th>機種</th><th>${kiLabel(ki)} の担当交代</th><th>備考（端末交換・GB変更など）</th><th></th></tr></thead>`;
   let body=state.master.map((p,i)=>{
     const chg=(p.tl&&p.tl[ki]?p.tl[ki]:[]);
     let tl = chg.map((e,j)=>{
@@ -645,9 +662,10 @@ function renderMaster(){
     const sstr=`${p.dept||''} ${p.name||''} ${p.phone||''} ${digits(p.phone)} ${p.note||''}`.toLowerCase();
     return `<tr data-search="${esc(sstr)}">
       <td>${i+1}</td>
-      <td><input data-i="${i}" data-f="dept" value="${esc(p.dept||'')}"></td>
+      <td><select data-i="${i}" data-f="dept">${deptOptionsHtml(p.dept||'')}</select></td>
       <td><input data-i="${i}" data-f="name" value="${esc(p.name||'')}"></td>
       <td><input data-i="${i}" data-f="phone" value="${esc(p.phone||'')}"></td>
+      <td><select data-i="${i}" data-f="model">${modelOptionsHtml(p.model||'')}</select></td>
       <td class="tlcell"><div class="base">開始担当：${esc(startHolder(p,ki)||'（未入力）')}（7月〜）</div>${tl}<button class="tladd" data-tadd="${i}">＋交代</button></td>
       <td><input class="notein" data-i="${i}" data-f="note" value="${esc(p.note||'')}" placeholder="例）2026-05 端末交換 / GB 3→20"></td>
       <td style="white-space:nowrap">
@@ -656,11 +674,11 @@ function renderMaster(){
         <button class="btn ghost sm" data-del="${i}" style="color:var(--red)">削除</button>
       </td></tr>`;
   }).join("");
-  if(!state.master.length){ body=`<tr class="emptyhint"><td colspan="7" class="hint" style="padding:16px">名簿がまだありません。共有DBに接続するか、右上の「データ読み込み(JSON)」で取り込むと表示されます。「＋ 行を追加」で手入力もできます。</td></tr>`; }
+  if(!state.master.length){ body=`<tr class="emptyhint"><td colspan="8" class="hint" style="padding:16px">名簿がまだありません。共有DBに接続するか、右上の「データ読み込み(JSON)」で取り込むと表示されます。「＋ 行を追加」で手入力もできます。</td></tr>`; }
   $("masterTbl").innerHTML=head+"<tbody>"+body+"</tbody>";
   applyMasterFilter();
   // base fields
-  $("masterTbl").querySelectorAll("input[data-f]").forEach(inp=>{
+  $("masterTbl").querySelectorAll("[data-f]").forEach(inp=>{
     inp.addEventListener("change",()=>{ state.master[+inp.dataset.i][inp.dataset.f]=inp.value; save(); renderMaster(); rerenderData(); });
   });
   // handover fields
@@ -689,8 +707,131 @@ function addToRoster(entry){
   if(idx>=0) state.master.splice(idx+1,0,entry); else state.master.push(entry);
 }
 
-function renderAll(){ renderStatus(); renderChips(); renderKibar(); renderDashboard(); renderMatrix(); renderMonthSel(); renderMonth(); renderMaster(); }
-function rerenderData(){ renderChips(); renderKibar(); renderDashboard(); renderMatrix(); renderMonth(); }
+// ---- 機種（保守） ----
+function deptOptionsHtml(sel){
+  const list=DEPTS.slice();
+  if(sel && !list.includes(sel)) list.unshift(sel); // 既存の部署名は消さずに残す
+  return `<option value="">（未選択）</option>`+list.map(d=>`<option value="${esc(d)}" ${d===sel?'selected':''}>${esc(d)}</option>`).join("");
+}
+function modelOptionsHtml(sel){
+  const models=(state.hoshuPrices||[]).map(p=>p.model);
+  if(sel && !models.includes(sel)) models.push(sel);
+  return `<option value="">（未設定）</option>`+models.map(m=>`<option value="${esc(m)}" ${m===sel?'selected':''}>${esc(m)}</option>`).join("");
+}
+function renderHoshu(){
+  const box=$("hoshuBox"); if(!box) return;
+  const prices=state.hoshuPrices||[];
+  const priceOf=m=>{const e=prices.find(p=>p.model===m);return e?Number(e.price)||0:0;};
+  const models=prices.map(p=>p.model);
+  // 集計: 部署×機種の台数
+  const depts=[]; const cnt={}; const unset=[];
+  state.master.forEach(p=>{ const d=p.dept||"未分類"; if(!depts.includes(d))depts.push(d); const m=p.model||""; if(!m){unset.push(p);return;} (cnt[d]=cnt[d]||{}); cnt[d][m]=(cnt[d][m]||0)+1; });
+  const modTot={}; models.forEach(m=>modTot[m]=0);
+  let gNin=0, gYen=0;
+  let rowsHtml=depts.map(d=>{
+    const c=cnt[d]||{}; let nin=0, amt=0;
+    const cells=models.map(m=>{const n=c[m]||0; nin+=n; amt+=n*priceOf(m); modTot[m]+=n; return `<td class="num">${n||""}</td>`;}).join("");
+    gNin+=nin; gYen+=amt;
+    return `<tr><td>${esc(d)}</td>${cells}<td class="num">${nin}</td><td class="num" style="font-weight:700">¥${yen(amt)}</td></tr>`;
+  }).join("");
+  const totCells=models.map(m=>`<td class="num">${modTot[m]||""}</td>`).join("");
+  const invQtyOf=m=>{const e=prices.find(p=>p.model===m);return e&&e.invQty!=null?Number(e.invQty)||0:0;};
+  const invTot=models.reduce((a,m)=>a+invQtyOf(m),0);
+  const qtyMismatch=models.filter(m=>(modTot[m]||0)!==invQtyOf(m)).length;
+  const tax=Math.round(gYen*0.1), inc=gYen+tax;
+  const invAmt=(state.hoshuInvoice&&state.hoshuInvoice.amount!=null&&state.hoshuInvoice.amount!=="")?Number(state.hoshuInvoice.amount):null;
+  const diff=invAmt!=null? inc-invAmt : null;
+  const head=`<thead><tr><th>部署</th>${models.map(m=>`<th class="num">${esc(m)}<br><small style="font-weight:600;color:var(--muted)">¥${yen(priceOf(m))}</small></th>`).join("")}<th class="num">台数</th><th class="num">保守料(税抜)</th></tr></thead>`;
+  const totRow=`<tr class="tot"><td>合計</td>${totCells}<td class="num">${gNin}</td><td class="num">¥${yen(gYen)}</td></tr>`;
+
+  // 単価マスタ編集
+  const priceRows=prices.map((p,i)=>`<tr>
+    <td><input data-hp="${i}" data-hf="model" value="${esc(p.model)}" style="width:128px"></td>
+    <td class="num"><input type="number" data-hp="${i}" data-hf="price" value="${p.price}" style="width:78px;text-align:right"></td>
+    <td class="num"><input type="number" data-hp="${i}" data-hf="invQty" value="${p.invQty==null?'':p.invQty}" style="width:70px;text-align:right"></td>
+    <td><button class="btn ghost sm" data-hpdel="${i}" style="color:var(--red)">削除</button></td></tr>`).join("");
+
+  box.innerHTML=`
+    <div class="tiles" style="margin-bottom:12px">
+      <div class="tile info"><div class="lab">保守料 税抜</div><div class="val" style="font-size:19px">¥${yen(gYen)}</div></div>
+      <div class="tile info"><div class="lab">消費税(10%)</div><div class="val" style="font-size:19px">¥${yen(tax)}</div></div>
+      <div class="tile info"><div class="lab">保守料 税込（自動計算）</div><div class="val" style="font-size:19px">¥${yen(inc)}</div></div>
+      <div class="tile ${invAmt==null?'':(diff===0?'ok':'warn')}"><div class="lab">請求書との差額</div><div class="val" style="font-size:19px">${invAmt==null?'—':(diff===0?'✓ 一致':(diff>0?'+':'')+'¥'+yen(diff))}</div></div>
+      <div class="tile ${qtyMismatch?'warn':'ok'}"><div class="lab">台数照合（名簿/請求）</div><div class="val" style="font-size:18px">${gNin} / ${invTot}${qtyMismatch?` <small style="color:var(--red)">⚠${qtyMismatch}機種ズレ</small>`:' <small>✓</small>'}</div></div>
+      <div class="tile ${unset.length?'amb':'ok'}"><div class="lab">機種 未設定</div><div class="val">${unset.length}<small> 人</small></div></div>
+    </div>
+
+    <div class="h3">機種別 台数の照合（名簿 vs 請求書）</div>
+    <div class="tblwrap"><table><thead><tr><th>機種</th><th class="num">名簿 台数</th><th class="num">請求書 台数</th><th class="num">差</th></tr></thead><tbody>
+      ${models.map(m=>{const rc=modTot[m]||0,iq=invQtyOf(m),d=rc-iq;return `<tr${d!==0?' style="background:var(--redTint)"':''}><td>${esc(m)}</td><td class="num">${rc}</td><td class="num">${iq}</td><td class="num" style="font-weight:700;color:${d===0?'var(--muted)':'var(--red)'}">${d===0?'0':(d>0?'+':'')+d}</td></tr>`;}).join("")}
+      <tr class="tot"><td>合計</td><td class="num">${gNin}</td><td class="num">${invTot}</td><td class="num" style="color:${gNin-invTot===0?'inherit':'var(--red)'}">${gNin-invTot===0?'0':(gNin-invTot>0?'+':'')+(gNin-invTot)}</td></tr>
+    </tbody></table></div>
+    <div class="hint" style="margin:4px 0 0">差が0でない機種は、名簿の台数と請求書の台数がズレています（機種未設定・登録漏れ・請求台数の入力ミスなどを確認）。請求書の台数は右の単価マスタで入力します。</div>
+
+    <div class="h3">部署別 内訳（機種×台数 → 保守料）</div>
+    <div class="tblwrap"><table>${head}<tbody>${rowsHtml}${totRow}</tbody></table></div>
+
+    <div style="display:flex;gap:18px;flex-wrap:wrap;margin-top:16px">
+      <div style="flex:1;min-width:260px">
+        <div class="h3" style="margin-top:0">請求書との照合</div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <label style="font-size:12.5px;color:var(--muted);font-weight:700">請求書の金額（税込）</label>
+          <input type="number" id="hoshuInv" value="${invAmt==null?'':invAmt}" placeholder="例）27940" style="width:120px;text-align:right">
+          <span class="hint" style="margin:0">保守請求書の税込金額を入れると上の「差額」で照合します</span>
+        </div>
+      </div>
+      <div style="flex:1;min-width:260px">
+        <div class="h3" style="margin-top:0">機種の単価マスタ</div>
+        <div class="tblwrap"><table class="masterTbl"><thead><tr><th>機種</th><th class="num">単価(税抜)</th><th class="num">請求台数</th><th></th></tr></thead><tbody>${priceRows}</tbody></table></div>
+        <button class="btn sec sm" id="hoshuAddModel" style="margin-top:6px">＋ 機種を追加</button>
+      </div>
+    </div>
+
+    <div class="h3">端末機種の一括設定</div>
+    <div class="hint" style="margin:0 0 6px">1行 <span class="code">電話番号,機種</span>（例 <span class="code">080-2626-1442,iPhone16e</span>）。貼り付けて反映すると、電話番号が一致する人の機種だけを更新します（他の情報は変わりません）。</div>
+    <textarea id="hoshuBulk" style="min-height:120px"></textarea>
+    <button class="btn sec sm" id="hoshuBulkApply" style="margin-top:6px">機種を反映</button>
+    ${unset.length?`<div class="extra" style="margin-top:14px"><b>機種が未設定（${unset.length}人）</b>　設定すると保守料に計上されます。<div style="margin-top:4px;font-size:12px">${unset.slice(0,40).map(p=>esc((p.name||'(氏名なし)')+' / '+(p.phone||'')) ).join('　・　')}${unset.length>40?' …':''}</div></div>`:""}
+  `;
+
+  // wiring
+  box.querySelectorAll("[data-hf]").forEach(inp=>inp.addEventListener("change",()=>{
+    const i=+inp.dataset.hp, f=inp.dataset.hf;
+    state.hoshuPrices[i][f] = (f==="price"||f==="invQty")? (Number(inp.value)||0) : inp.value;
+    save(); renderHoshu(); renderMaster();
+  }));
+  box.querySelectorAll("[data-hpdel]").forEach(b=>b.addEventListener("click",()=>{ state.hoshuPrices.splice(+b.dataset.hpdel,1); save(); renderHoshu(); renderMaster(); }));
+  $("hoshuAddModel").onclick=()=>{ state.hoshuPrices.push({model:"新機種",price:0,invQty:0}); save(); renderHoshu(); renderMaster(); };
+  $("hoshuInv").addEventListener("change",e=>{ const v=e.target.value.trim(); state.hoshuInvoice={amount: v===""?null:Number(v)}; save(); renderHoshu(); });
+  $("hoshuBulkApply").onclick=()=>{
+    const txt=$("hoshuBulk").value; let n=0, miss=0;
+    const idx={}; state.master.forEach((p,i)=>{ const d=digits(p.phone); if(d) idx[d]=i; });
+    txt.split(/\r?\n/).forEach(l=>{ l=l.trim(); if(!l||l.startsWith("電話番号"))return; const c=l.split(","); if(c.length<2)return; const d=digits(c[0]); const m=c[1].trim(); if(d in idx){ state.master[idx[d]].model=m; n++; } else miss++; });
+    if(n){ save(); renderHoshu(); renderMaster(); }
+    toast(`機種を反映：${n}件${miss?` / 未一致 ${miss}件`:""}`);
+  };
+}
+function dlHoshuCsv(){
+  const prices=state.hoshuPrices||[]; const models=prices.map(p=>p.model);
+  const priceOf=m=>{const e=prices.find(p=>p.model===m);return e?Number(e.price)||0:0;};
+  const depts=[]; const cnt={};
+  state.master.forEach(p=>{ const d=p.dept||"未分類"; if(!depts.includes(d))depts.push(d); const m=p.model||""; if(!m)return; (cnt[d]=cnt[d]||{}); cnt[d][m]=(cnt[d][m]||0)+1; });
+  const rows=[["部署",...models,"台数","保守料(税抜)"]];
+  const modTot={}; models.forEach(m=>modTot[m]=0); let gN=0,gY=0;
+  depts.forEach(d=>{ const c=cnt[d]||{}; let n=0,a=0; const cells=models.map(m=>{const x=c[m]||0;n+=x;a+=x*priceOf(m);modTot[m]+=x;return x;}); gN+=n;gY+=a; rows.push([d,...cells,n,a]); });
+  rows.push(["合計",...models.map(m=>modTot[m]),gN,gY]);
+  const tax=Math.round(gY*0.1);
+  rows.push([]); rows.push(["税抜",gY]); rows.push(["消費税(10%)",tax]); rows.push(["税込",gY+tax]);
+  rows.push([]); rows.push(["機種別 台数照合","名簿台数","請求台数","差"]);
+  const iq=m=>{const e=prices.find(p=>p.model===m);return e&&e.invQty!=null?Number(e.invQty)||0:0;};
+  models.forEach(m=>rows.push([m,modTot[m],iq(m),modTot[m]-iq(m)]));
+  const invT=models.reduce((a,m)=>a+iq(m),0);
+  rows.push(["合計",gN,invT,gN-invT]);
+  dl(new Blob([csv(rows)],{type:"text/csv"}), `保守料金_部署別内訳.csv`);
+}
+
+function renderAll(){ renderStatus(); renderChips(); renderKibar(); renderDashboard(); renderMatrix(); renderMonthSel(); renderMonth(); renderHoshu(); renderMaster(); }
+function rerenderData(){ renderChips(); renderKibar(); renderDashboard(); renderMatrix(); renderMonth(); renderHoshu(); }
 
 // ================= EVENTS =================
 document.querySelectorAll(".tab").forEach(t=>t.addEventListener("click",()=>{
@@ -698,7 +839,9 @@ document.querySelectorAll(".tab").forEach(t=>t.addEventListener("click",()=>{
   document.querySelectorAll(".pane").forEach(x=>x.classList.remove("active"));
   t.classList.add("active"); $("pane-"+t.dataset.pane).classList.add("active");
   if(t.dataset.pane==='dash') renderDashboard();
+  if(t.dataset.pane==='hoshu') renderHoshu();
 }));
+$("dlHoshu").onclick=dlHoshuCsv;
 
 const drop=$("drop"), pdfIn=$("pdfIn");
 drop.onclick=()=>pdfIn.click();
@@ -787,13 +930,15 @@ function setSync(state, msg){
 function fmtTime(iso){ if(!iso)return""; const d=new Date(iso); if(isNaN(d))return iso; const p=n=>String(n).padStart(2,"0"); return `${d.getFullYear()}/${p(d.getMonth()+1)}/${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`; }
 
 // 共有対象データ（currentKi と 同期設定は含めない＝各自ローカル）
-function sharedData(){ return { master:state.master, months:state.months, kiAnchor:state.kiAnchor, extraKi:state.extraKi }; }
+function sharedData(){ return { master:state.master, months:state.months, kiAnchor:state.kiAnchor, extraKi:state.extraKi, hoshuPrices:state.hoshuPrices, hoshuInvoice:state.hoshuInvoice }; }
 function applyShared(d){
   if(!d) return;
   state.master = Array.isArray(d.master)? d.master : [];
   state.months = d.months || {};
   state.kiAnchor = d.kiAnchor || {num:40,startYear:2025};
   state.extraKi = d.extraKi || [];
+  if(d.hoshuPrices) state.hoshuPrices = d.hoshuPrices;
+  if(d.hoshuInvoice) state.hoshuInvoice = d.hoshuInvoice;
   migrate();
 }
 
