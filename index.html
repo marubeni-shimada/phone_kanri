@@ -429,6 +429,10 @@ function buildMatrix(ki){
   return {months, rows, maps};
 }
 function dupPhones(){ const seen={},dup=new Set(); for(const p of state.master){ const d=digits(p.phone); if(d){ if(seen[d])dup.add(d); seen[d]=true; } } return dup; }
+// 部署の並び順（DEPTS順→それ以外は部署名でまとめて後ろ）
+function deptRank(d){ const i=DEPTS.indexOf(d); return i<0?DEPTS.length:i; }
+function byDeptRow(a,b){ const ra=deptRank(a.dept),rb=deptRank(b.dept); if(ra!==rb)return ra-rb; const da=a.dept||'',db=b.dept||''; return da<db?-1:da>db?1:0; }
+function byDeptName(a,b){ const ra=deptRank(a),rb=deptRank(b); if(ra!==rb)return ra-rb; return a<b?-1:a>b?1:0; }
 function extraFor(ym){ const set=new Set(state.master.map(p=>digits(p.phone))); const mo=state.months[ym]; if(!mo)return []; return mo.records.filter(r=>!set.has(digits(r.phone))); }
 
 // ================= RENDER =================
@@ -534,7 +538,7 @@ function drawDept(ym){
   const map=amountMap(ym);
   const byDept={};
   state.master.forEach(p=>{ const d=digits(p.phone); const v=(d in map)?map[d]:0; byDept[p.dept]=(byDept[p.dept]||0)+v; });
-  const depts=Object.keys(byDept); const max=Math.max(...depts.map(d=>byDept[d]),1);
+  const depts=Object.keys(byDept).sort(byDeptName); const max=Math.max(...depts.map(d=>byDept[d]),1);
   const colors={"土木部":"#2563eb","営業部":"#0d9668","環境事業部":"#e0820a","共通":"#7c3aed"};
   $("deptBox").innerHTML = depts.map(d=>{
     const w=Math.round(byDept[d]/max*100);
@@ -551,6 +555,7 @@ function drawDept(ym){
 function renderMatrix(){
   const ki=curKi(); const {months,rows}=buildMatrix(ki);
   if(!months.length){ $("matrixTbl").innerHTML=`<tr><td class="hint" style="padding:14px">${kiLabel(ki)} のデータはまだありません。</td></tr>`; return; }
+  rows.sort(byDeptRow); // 部署ごとにまとめて集計（土木部→営業部→統括管理部→共通の順）
   let head=`<thead><tr><th>#</th><th>氏名</th><th>電話番号</th>`+months.map(ym=>`<th class="num">${mLabel(ym)}</th>`).join("")+`<th class="num">累計</th><th class="num">平均</th></tr></thead>`;
   let body="", curDept=null, idx=0;
   const deptTot=months.map(()=>0); let gtot=months.map(()=>0);
@@ -624,7 +629,7 @@ function renderMonth(){
   }));
   let head=`<thead><tr><th>#</th><th>氏名（${mo.label}時点）</th><th>電話番号</th><th class="num">${mo.label}</th><th class="num">前月</th><th class="num">差額</th><th>状態</th></tr></thead>`;
   let body="",curDept=null,idx2=0;
-  state.master.forEach(p=>{
+  state.master.slice().sort(byDeptRow).forEach(p=>{
     if(p.dept!==curDept){ curDept=p.dept; body+=`<tr class="dept"><td colspan="7">＜${esc(curDept)}＞</td></tr>`; }
     idx2++;
     const d=digits(p.phone); const v=(d in map)?map[d]:null; const pv=pmap&&(d in pmap)?pmap[d]:null;
@@ -726,6 +731,7 @@ function renderHoshu(){
   // 集計: 部署×機種の台数
   const depts=[]; const cnt={}; const unset=[];
   state.master.forEach(p=>{ const d=p.dept||"未分類"; if(!depts.includes(d))depts.push(d); const m=p.model||""; if(!m){unset.push(p);return;} (cnt[d]=cnt[d]||{}); cnt[d][m]=(cnt[d][m]||0)+1; });
+  depts.sort(byDeptName);
   const modTot={}; models.forEach(m=>modTot[m]=0);
   let gNin=0, gYen=0;
   let rowsHtml=depts.map(d=>{
@@ -816,6 +822,7 @@ function dlHoshuCsv(){
   const priceOf=m=>{const e=prices.find(p=>p.model===m);return e?Number(e.price)||0:0;};
   const depts=[]; const cnt={};
   state.master.forEach(p=>{ const d=p.dept||"未分類"; if(!depts.includes(d))depts.push(d); const m=p.model||""; if(!m)return; (cnt[d]=cnt[d]||{}); cnt[d][m]=(cnt[d][m]||0)+1; });
+  depts.sort(byDeptName);
   const rows=[["部署",...models,"台数","保守料(税抜)"]];
   const modTot={}; models.forEach(m=>modTot[m]=0); let gN=0,gY=0;
   depts.forEach(d=>{ const c=cnt[d]||{}; let n=0,a=0; const cells=models.map(m=>{const x=c[m]||0;n+=x;a+=x*priceOf(m);modTot[m]+=x;return x;}); gN+=n;gY+=a; rows.push([d,...cells,n,a]); });
