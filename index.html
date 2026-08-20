@@ -143,6 +143,21 @@
   .savepill.err{background:var(--redBg);color:var(--red);}
   .savepill.local{background:#eef1f5;color:var(--muted);}
   .savepill.hide{display:none;}
+  /* 印刷（PDF出力） */
+  .print-only{display:none;}
+  @media print{
+    body{background:#fff;}
+    .top,.tabs,.kicard,.synccard,.no-print{display:none !important;}
+    .wrap{max-width:none;margin:0;padding:0;}
+    .card{border:none;border-radius:0;padding:0;margin:0;}
+    .pane{display:none !important;} .pane.active{display:block !important;}
+    .print-only{display:block !important;}
+    #printHead{margin:0 0 12px;}
+    table{font-size:10.5px;width:100%;} th{position:static;}
+    tr{page-break-inside:avoid;}
+    .h3{margin:14px 0 6px;}
+    *{-webkit-print-color-adjust:exact;print-color-adjust:exact;}
+  }
 </style>
 </head>
 <body>
@@ -158,8 +173,9 @@
 </div>
 
 <div class="wrap">
+  <div id="printHead" class="print-only"></div>
   <!-- LOAD -->
-  <div class="card">
+  <div class="card no-print">
     <div class="loadrow">
       <div style="flex:1;min-width:260px">
         <div id="drop">
@@ -234,8 +250,9 @@
   <!-- MATRIX -->
   <div class="pane" id="pane-matrix">
     <div class="card">
-      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
+      <div class="no-print" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
         <button class="btn sm" id="dlMatrix">マトリクスをCSVで出力</button>
+        <button class="btn sec sm" id="pdfMatrix">🖨 PDF出力</button>
         <span class="hint" style="margin:0">前月比 <span class="code">±1,000円</span> 以上の変化を色分け（<span class="up">増=赤</span> / <span class="down">減=青</span> / <span style="color:var(--amber)">新規=黄</span>）。担当交代は氏名欄に二行表示。</span>
       </div>
       <div class="tblwrap"><table id="matrixTbl"></table></div>
@@ -245,11 +262,12 @@
   <!-- MONTH -->
   <div class="pane" id="pane-month">
     <div class="card">
-      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:12px">
+      <div class="no-print" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:12px">
         <label>月を選択：</label>
         <select id="monthSel"></select>
         <button class="btn green sm" id="copyCol">📋 金額列をコピー（名簿順）</button>
         <button class="btn sm" id="dlMonthCsv">当月CSV</button>
+        <button class="btn sec sm" id="pdfMonth">🖨 PDF出力</button>
       </div>
       <div class="tiles" id="monthTiles"></div>
       <div id="monthExtra"></div>
@@ -260,8 +278,9 @@
   <!-- HOSHU (maintenance) -->
   <div class="pane" id="pane-hoshu">
     <div class="card">
-      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px">
+      <div class="no-print" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px">
         <button class="btn sm" id="dlHoshu">部署別内訳をCSV出力</button>
+        <button class="btn sec sm" id="pdfHoshu">🖨 PDF出力</button>
         <span class="hint" style="margin:0">名簿の「機種」×単価で保守料を<b>部署別に自動按分</b>します。請求書（税込）を入れると自動計算額と照合できます。機種は「マスタ（名簿）」タブで設定します。</span>
       </div>
       <div id="hoshuBox"></div>
@@ -792,7 +811,7 @@ function renderHoshu(){
     <div class="h3">部署別 内訳（機種×台数 → 保守料）</div>
     <div class="tblwrap"><table>${head}<tbody>${rowsHtml}${totRow}</tbody></table></div>
 
-    <div style="display:flex;gap:18px;flex-wrap:wrap;margin-top:16px">
+    <div class="no-print" style="display:flex;gap:18px;flex-wrap:wrap;margin-top:16px">
       <div style="flex:1;min-width:260px">
         <div class="h3" style="margin-top:0">請求書との照合</div>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
@@ -808,10 +827,12 @@ function renderHoshu(){
       </div>
     </div>
 
+    <div class="no-print">
     <div class="h3">端末機種の一括設定</div>
     <div class="hint" style="margin:0 0 6px">1行 <span class="code">電話番号,機種</span>（例 <span class="code">080-2626-1442,iPhone16e</span>）。貼り付けて反映すると、電話番号が一致する人の機種だけを更新します（他の情報は変わりません）。</div>
     <textarea id="hoshuBulk" style="min-height:120px"></textarea>
     <button class="btn sec sm" id="hoshuBulkApply" style="margin-top:6px">機種を反映</button>
+    </div>
     ${unset.length?`<div class="extra" style="margin-top:14px"><b>機種が未設定（${unset.length}人）</b>　設定すると保守料に計上されます。<div style="margin-top:4px;font-size:12px">${unset.slice(0,40).map(p=>esc((p.name||'(氏名なし)')+' / '+(p.phone||'')) ).join('　・　')}${unset.length>40?' …':''}</div></div>`:""}
   `;
 
@@ -865,6 +886,19 @@ document.querySelectorAll(".tab").forEach(t=>t.addEventListener("click",()=>{
   if(t.dataset.pane==='hoshu') renderHoshu();
 }));
 $("dlHoshu").onclick=dlHoshuCsv;
+
+// ---- PDF出力（印刷→PDF保存） ----
+function printView(title){
+  const ki=curKi(); const d=new Date(); const p=n=>String(n).padStart(2,"0");
+  const ds=`${d.getFullYear()}/${p(d.getMonth()+1)}/${p(d.getDate())}`;
+  $("printHead").innerHTML=`<div style="display:flex;justify-content:space-between;align-items:flex-end;border-bottom:2px solid #1c2430;padding-bottom:6px">
+    <div style="font-size:18px;font-weight:800">${esc(title)}</div>
+    <div style="text-align:right;font-size:12px;color:#333">${kiLabel(ki)}（${kiSub(ki)}）　／　出力日：${ds}</div></div>`;
+  window.print();
+}
+$("pdfMatrix").onclick=()=>printView("携帯料金　人×月マトリクス");
+$("pdfMonth").onclick=()=>printView(`携帯料金　単月チェック（${$("monthSel").value||""}）`);
+$("pdfHoshu").onclick=()=>printView("スマホ保守料金　部署別内訳");
 
 const drop=$("drop"), pdfIn=$("pdfIn");
 drop.onclick=()=>pdfIn.click();
