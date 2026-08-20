@@ -135,12 +135,21 @@
   .cfgrow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
   .cfgrow>label{min-width:120px;font-size:12.5px;font-weight:700;color:var(--muted);}
   .cfgrow input[type=text]{flex:1;min-width:220px;}
+  /* 保存ステータス（上部バー常時表示） */
+  .savepill{font-size:12px;font-weight:800;padding:3px 11px;border-radius:20px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;user-select:none;white-space:nowrap;}
+  .savepill .d{width:8px;height:8px;border-radius:50%;background:currentColor;display:inline-block;}
+  .savepill.saved{background:var(--greenBg);color:var(--green);}
+  .savepill.saving{background:var(--blueBg);color:var(--blue);}
+  .savepill.err{background:var(--redBg);color:var(--red);}
+  .savepill.local{background:#eef1f5;color:var(--muted);}
+  .savepill.hide{display:none;}
 </style>
 </head>
 <body>
 <div class="top">
   <h1>携帯料金 年間ダッシュボード</h1>
   <span class="badge" id="statusBadge">データなし</span>
+  <span class="savepill hide" id="savePill" title="クリックで今すぐ保存"></span>
   <span class="sp"></span>
   <input type="file" id="jsonIn" accept=".json" style="display:none">
   <button class="btn sec sm" id="exportJson">データ書き出し(JSON)</button>
@@ -319,7 +328,7 @@ let state = { master: DEFAULT_ROSTER.slice(), months: {}, kiAnchor:{num:40,start
   hoshuPrices:[{model:"iPhone16e",price:600,invQty:33},{model:"iPhoneSE",price:500,invQty:9},{model:"iPhone12",price:600,invQty:1},{model:"iPad",price:500,invQty:1}], hoshuInvoice:{amount:null} };
 
 // ---- persistence ----
-function save(){ try{ localStorage.setItem(STORE_KEY, JSON.stringify(state)); }catch(e){} renderStatus(); schedulePush(); }
+function save(){ try{ localStorage.setItem(STORE_KEY, JSON.stringify(state)); }catch(e){} renderStatus(); if(typeof syncOn==="function"&&syncOn()&&syncCfg.auto) setSavePill("saving","共有に保存中…"); schedulePush(); }
 function load(){ try{ const s=localStorage.getItem(STORE_KEY); if(s){ const o=JSON.parse(s); if(o&&o.master) state=o; } }catch(e){} migrate(); }
 function migrate(){
   state.months = state.months||{};
@@ -941,6 +950,8 @@ function setSync(state, msg){
   const dot=$("syncDot"); dot.className="syncdot"+(state?(" "+state):"");
   if(msg!=null) $("syncStatus").textContent=msg;
 }
+function hhmm(){ const d=new Date(); const p=n=>String(n).padStart(2,"0"); return `${p(d.getHours())}:${p(d.getMinutes())}`; }
+function setSavePill(kind, text){ const el=$("savePill"); if(!el)return; el.className="savepill "+kind; el.innerHTML=`<span class="d"></span>${text}`; }
 function fmtTime(iso){ if(!iso)return""; const d=new Date(iso); if(isNaN(d))return iso; const p=n=>String(n).padStart(2,"0"); return `${d.getFullYear()}/${p(d.getMonth()+1)}/${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`; }
 
 // 共有対象データ（currentKi と 同期設定は含めない＝各自ローカル）
@@ -976,8 +987,8 @@ async function pullShared(opts){
   try{
     const o = await gasCall({action:"load"});
     if(!o.ok){
-      if(o.error==="unauthorized"){ setSync("err","トークンが違います（アクセス拒否）"); }
-      else setSync("err","取得失敗: "+(o.error||""));
+      if(o.error==="unauthorized"){ setSync("err","トークンが違います（アクセス拒否）"); setSavePill("err","⚠ 取得失敗（トークン）"); }
+      else { setSync("err","取得失敗: "+(o.error||"")); setSavePill("err","⚠ 取得失敗（再試行）"); }
       return o;
     }
     syncCfg.rev = o.rev||0; saveSyncCfg();
@@ -986,11 +997,13 @@ async function pullShared(opts){
       try{ localStorage.setItem(STORE_KEY, JSON.stringify(state)); }catch(e){}
       renderAll();
       setSync("on", `共有DBと同期済み（更新: ${fmtTime(o.updatedAt)}${o.updatedBy?" / "+o.updatedBy:""}）`);
+      setSavePill("saved", `✓ 同期済み ${hhmm()}`);
     }else{
       setSync("warn","共有DBは空です。『今すぐ共有に保存』で初期データを登録できます");
+      setSavePill("saving", "共有DB未初期化");
     }
     return o;
-  }catch(e){ setSync("err","取得エラー: "+e.message); return {ok:false,error:e.message}; }
+  }catch(e){ setSync("err","取得エラー: "+e.message); setSavePill("err","⚠ 取得失敗（再試行）"); return {ok:false,error:e.message}; }
 }
 
 function schedulePush(){
@@ -1007,17 +1020,19 @@ async function pushShared(manual){
     if(o.ok){
       syncCfg.rev=o.rev; saveSyncCfg();
       setSync("on", `共有DBに保存済み（${fmtTime(o.updatedAt)}${o.updatedBy?" / "+o.updatedBy:""}）`);
+      setSavePill("saved", `✓ 保存済み ${hhmm()}`);
       if(manual) toast("共有DBに保存しました");
     }else if(o.error==="conflict"){
       setSync("warn","競合：他の人が先に更新しました。最新を取り込みます");
       await pullShared();
+      setSavePill("saved", `✓ 最新に更新 ${hhmm()}`);
       toast("他の人の更新を取り込みました。編集し直して保存してください");
     }else if(o.error==="unauthorized"){
-      setSync("err","トークンが違います（保存拒否）");
+      setSync("err","トークンが違います（保存拒否）"); setSavePill("err","⚠ 保存不可（トークン）");
     }else{
-      setSync("err","保存失敗: "+(o.error||""));
+      setSync("err","保存失敗: "+(o.error||"")); setSavePill("err","⚠ 未保存（再試行）");
     }
-  }catch(e){ setSync("err","保存エラー: "+e.message); }
+  }catch(e){ setSync("err","保存エラー: "+e.message); setSavePill("err","⚠ 未保存（再試行）"); }
   finally{ pushing=false; }
 }
 
@@ -1035,9 +1050,10 @@ function initSync(){
   $("cfgUrl").value=syncCfg.url||""; $("cfgToken").value=syncCfg.token||""; $("cfgBy").value=syncCfg.by||""; $("cfgAuto").checked=syncCfg.auto!==false;
   // HTMLにURLを焼き込んである場合は、共有(GAS)のUIカードを隠して裏で同期のみ動かす
   if(syncCfg.baked){ const c=document.querySelector(".synccard"); if(c) c.style.display="none"; }
-  if(syncOn()){ setSync("warn","共有DBに接続中…"); pullShared(); }
-  else setSync("","未設定（このブラウザ内のみ保存）");
+  if(syncOn()){ setSync("warn","共有DBに接続中…"); setSavePill("saving","共有DBに接続中…"); pullShared(); }
+  else { setSync("","未設定（このブラウザ内のみ保存）"); setSavePill("local","この端末に保存"); }
 }
+$("savePill").addEventListener("click", ()=>{ if(syncOn()) pushShared(true); });
 
 // master search
 $("masterSearch").addEventListener("input", applyMasterFilter);
