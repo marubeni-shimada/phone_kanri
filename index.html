@@ -419,7 +419,7 @@ function buildMatrix(ki){
   const months=monthsOfKi(ki);
   const maps=months.map(amountMap);
   const dupSet=dupPhones();
-  const rows=state.master.map(p=>{
+  const rows=state.master.filter(p=>activeInKi(p,ki)).map(p=>{
     const d=digits(p.phone);
     const vals=maps.map(mp=> d && (d in mp)? mp[d] : null);
     const tot=vals.reduce((a,v)=>a+(v||0),0);
@@ -433,7 +433,9 @@ function dupPhones(){ const seen={},dup=new Set(); for(const p of state.master){
 function deptRank(d){ const i=DEPTS.indexOf(d); return i<0?DEPTS.length:i; }
 function byDeptRow(a,b){ const ra=deptRank(a.dept),rb=deptRank(b.dept); if(ra!==rb)return ra-rb; const da=a.dept||'',db=b.dept||''; return da<db?-1:da>db?1:0; }
 function byDeptName(a,b){ const ra=deptRank(a),rb=deptRank(b); if(ra!==rb)return ra-rb; return a<b?-1:a>b?1:0; }
-function extraFor(ym){ const set=new Set(state.master.map(p=>digits(p.phone))); const mo=state.months[ym]; if(!mo)return []; return mo.records.filter(r=>!set.has(digits(r.phone))); }
+// 在籍判定：joinKi(入社期)以上 かつ leftKi(退職＝在籍終了期)以下 の期で在籍
+function activeInKi(p, ki){ return (p.joinKi==null || ki>=p.joinKi) && (p.leftKi==null || ki<=p.leftKi); }
+function extraFor(ym){ const ki=kiNumOf(ym); const set=new Set(state.master.filter(p=>activeInKi(p,ki)).map(p=>digits(p.phone))); const mo=state.months[ym]; if(!mo)return []; return mo.records.filter(r=>!set.has(digits(r.phone))); }
 
 // ================= RENDER =================
 function renderStatus(){
@@ -536,8 +538,8 @@ function drawTrend(ms, totals){
 
 function drawDept(ym){
   const map=amountMap(ym);
-  const byDept={};
-  state.master.forEach(p=>{ const d=digits(p.phone); const v=(d in map)?map[d]:0; byDept[p.dept]=(byDept[p.dept]||0)+v; });
+  const byDept={}; const dki=kiNumOf(ym);
+  state.master.forEach(p=>{ if(!activeInKi(p,dki))return; const d=digits(p.phone); const v=(d in map)?map[d]:0; byDept[p.dept]=(byDept[p.dept]||0)+v; });
   const depts=Object.keys(byDept).sort(byDeptName); const max=Math.max(...depts.map(d=>byDept[d]),1);
   const colors={"土木部":"#2563eb","営業部":"#0d9668","環境事業部":"#e0820a","共通":"#7c3aed"};
   $("deptBox").innerHTML = depts.map(d=>{
@@ -598,9 +600,9 @@ function renderMonth(){
   const mo=state.months[ym]; const idx=ms.indexOf(ym); const prevYm=idx>0?ms[idx-1]:null;
   const map=amountMap(ym), pmap=prevYm?amountMap(prevYm):null;
   const okRec=(mo.grand==null)||(mo.sum===mo.grand);
-  const miss=state.master.filter(p=>p.phone&&p.phone!=='-'&&!(digits(p.phone) in map)).length;
+  const miss=state.master.filter(p=>activeInKi(p,ki)&&p.phone&&p.phone!=='-'&&!(digits(p.phone) in map)).length;
   const extra=extraFor(ym);
-  let big=0; state.master.forEach(p=>{ const d=digits(p.phone); if(pmap&&d in map&&d in pmap&&Math.abs(map[d]-pmap[d])>=COMPARE_YEN)big++; });
+  let big=0; state.master.forEach(p=>{ if(!activeInKi(p,ki))return; const d=digits(p.phone); if(pmap&&d in map&&d in pmap&&Math.abs(map[d]-pmap[d])>=COMPARE_YEN)big++; });
   $("monthTiles").innerHTML=`
     <div class="tile info"><div class="lab">請求月</div><div class="val" style="font-size:17px">${mo.label}</div></div>
     <div class="tile info"><div class="lab">回線数 / 総額</div><div class="val" style="font-size:17px">${mo.records.length}件 ¥${yen(mo.sum)}</div></div>
@@ -623,13 +625,13 @@ function renderMonth(){
   $("monthExtra").querySelectorAll(".addbtn").forEach(b=>b.addEventListener("click",()=>{
     const row=b.closest(".addrow"); const phone=row.dataset.phone;
     const dept=row.querySelector(".adept").value.trim(); const name=row.querySelector(".aname").value.trim();
-    addToRoster({dept:dept||"未分類", name:name, phone:phone, tl:{}});
+    addToRoster({dept:dept||"未分類", name:name, phone:phone, tl:{}, joinKi:curKi()});
     save(); renderMaster(); rerenderData(); renderMonth();
     toast(`名簿に追加しました：${phone}${name?'（'+name+'）':''}`);
   }));
   let head=`<thead><tr><th>#</th><th>氏名（${mo.label}時点）</th><th>電話番号</th><th class="num">${mo.label}</th><th class="num">前月</th><th class="num">差額</th><th>状態</th></tr></thead>`;
   let body="",curDept=null,idx2=0;
-  state.master.slice().sort(byDeptRow).forEach(p=>{
+  state.master.filter(p=>activeInKi(p,ki)).sort(byDeptRow).forEach(p=>{
     if(p.dept!==curDept){ curDept=p.dept; body+=`<tr class="dept"><td colspan="7">＜${esc(curDept)}＞</td></tr>`; }
     idx2++;
     const d=digits(p.phone); const v=(d in map)?map[d]:null; const pv=pmap&&(d in pmap)?pmap[d]:null;
@@ -665,7 +667,7 @@ function renderMaster(){
       </div>`;
     }).join("");
     const sstr=`${p.dept||''} ${p.name||''} ${p.phone||''} ${digits(p.phone)} ${p.note||''}`.toLowerCase();
-    return `<tr data-search="${esc(sstr)}">
+    return `<tr data-search="${esc(sstr)}"${p.leftKi!=null?' style="opacity:.55"':''}>
       <td>${i+1}</td>
       <td><select data-i="${i}" data-f="dept">${deptOptionsHtml(p.dept||'')}</select></td>
       <td><input data-i="${i}" data-f="name" value="${esc(p.name||'')}"></td>
@@ -674,6 +676,7 @@ function renderMaster(){
       <td class="tlcell"><div class="base">開始担当：${esc(startHolder(p,ki)||'（未入力）')}（7月〜）</div>${tl}<button class="tladd" data-tadd="${i}">＋交代</button></td>
       <td><input class="notein" data-i="${i}" data-f="note" value="${esc(p.note||'')}" placeholder="例）2026-05 端末交換 / GB 3→20"></td>
       <td style="white-space:nowrap">
+        ${p.leftKi!=null?`<span class="flag f-miss">第${p.leftKi}期で退職</span> <button class="btn ghost sm" data-unleft="${i}">取消</button>`:`<button class="btn ghost sm" data-left="${i}">退職</button>`}
         <button class="btn ghost sm" data-mv="up" data-i="${i}">↑</button>
         <button class="btn ghost sm" data-mv="down" data-i="${i}">↓</button>
         <button class="btn ghost sm" data-del="${i}" style="color:var(--red)">削除</button>
@@ -693,7 +696,9 @@ function renderMaster(){
   $("masterTbl").querySelectorAll("[data-tadd]").forEach(b=>b.addEventListener("click",()=>{ const i=+b.dataset.tadd; ensureTl(i,ki); state.master[i].tl[ki].push({from:"",name:""}); save(); renderMaster(); }));
   $("masterTbl").querySelectorAll("[data-tdel]").forEach(b=>b.addEventListener("click",()=>{ const i=+b.dataset.tdel,j=+b.dataset.j; state.master[i].tl[ki].splice(j,1); if(!state.master[i].tl[ki].length) delete state.master[i].tl[ki]; save(); renderMaster(); rerenderData(); }));
   // row ops
-  $("masterTbl").querySelectorAll("[data-del]").forEach(b=>b.addEventListener("click",()=>{ const i=+b.dataset.del; const p=state.master[i]; if(!confirm(`この行を名簿から削除します。\n　${p.name||'(氏名なし)'}　${p.phone||''}\nよろしいですか？`)) return; state.master.splice(i,1); save(); renderMaster(); rerenderData(); }));
+  $("masterTbl").querySelectorAll("[data-left]").forEach(b=>b.addEventListener("click",()=>{ const i=+b.dataset.left; const p=state.master[i]; const k=curKi(); if(!confirm(`${p.name||'(氏名なし)'} を 第${k}期で退職（在籍終了）にします。\n第${k}期までは名簿に残り、第${k+1}期からは自動で外れます。\nよろしいですか？`)) return; p.leftKi=k; save(); renderMaster(); rerenderData(); }));
+  $("masterTbl").querySelectorAll("[data-unleft]").forEach(b=>b.addEventListener("click",()=>{ state.master[+b.dataset.unleft].leftKi=null; save(); renderMaster(); rerenderData(); }));
+  $("masterTbl").querySelectorAll("[data-del]").forEach(b=>b.addEventListener("click",()=>{ const i=+b.dataset.del; const p=state.master[i]; if(!confirm(`この行を名簿から完全に削除します（全ての期から消えます）。\n退職なら「退職」ボタンの方が過去の期を残せます。\n　${p.name||'(氏名なし)'}　${p.phone||''}\n本当に削除しますか？`)) return; state.master.splice(i,1); save(); renderMaster(); rerenderData(); }));
   $("masterTbl").querySelectorAll("[data-mv]").forEach(b=>b.addEventListener("click",()=>{ const i=+b.dataset.i,j=b.dataset.mv==='up'?i-1:i+1; if(j<0||j>=state.master.length)return; const t=state.master[i];state.master[i]=state.master[j];state.master[j]=t; save(); renderMaster(); rerenderData(); }));
 }
 function ensureTl(i,ki){ const p=state.master[i]; if(!p.tl)p.tl={}; if(!p.tl[ki])p.tl[ki]=[]; }
@@ -729,8 +734,9 @@ function renderHoshu(){
   const priceOf=m=>{const e=prices.find(p=>p.model===m);return e?Number(e.price)||0:0;};
   const models=prices.map(p=>p.model);
   // 集計: 部署×機種の台数
+  const hki=curKi();
   const depts=[]; const cnt={}; const unset=[];
-  state.master.forEach(p=>{ const d=p.dept||"未分類"; if(!depts.includes(d))depts.push(d); const m=p.model||""; if(!m){unset.push(p);return;} (cnt[d]=cnt[d]||{}); cnt[d][m]=(cnt[d][m]||0)+1; });
+  state.master.forEach(p=>{ if(!activeInKi(p,hki))return; const d=p.dept||"未分類"; if(!depts.includes(d))depts.push(d); const m=p.model||""; if(!m){unset.push(p);return;} (cnt[d]=cnt[d]||{}); cnt[d][m]=(cnt[d][m]||0)+1; });
   depts.sort(byDeptName);
   const modTot={}; models.forEach(m=>modTot[m]=0);
   let gNin=0, gYen=0;
@@ -820,8 +826,9 @@ function renderHoshu(){
 function dlHoshuCsv(){
   const prices=state.hoshuPrices||[]; const models=prices.map(p=>p.model);
   const priceOf=m=>{const e=prices.find(p=>p.model===m);return e?Number(e.price)||0:0;};
+  const hki=curKi();
   const depts=[]; const cnt={};
-  state.master.forEach(p=>{ const d=p.dept||"未分類"; if(!depts.includes(d))depts.push(d); const m=p.model||""; if(!m)return; (cnt[d]=cnt[d]||{}); cnt[d][m]=(cnt[d][m]||0)+1; });
+  state.master.forEach(p=>{ if(!activeInKi(p,hki))return; const d=p.dept||"未分類"; if(!depts.includes(d))depts.push(d); const m=p.model||""; if(!m)return; (cnt[d]=cnt[d]||{}); cnt[d][m]=(cnt[d][m]||0)+1; });
   depts.sort(byDeptName);
   const rows=[["部署",...models,"台数","保守料(税抜)"]];
   const modTot={}; models.forEach(m=>modTot[m]=0); let gN=0,gY=0;
@@ -881,8 +888,8 @@ async function loadFiles(files){
 $("monthSel").addEventListener("change",renderMonth);
 
 $("copyCol").onclick=()=>{
-  const ym=$("monthSel").value; if(!ym){toast("月がありません");return;} const map=amountMap(ym);
-  const col=state.master.map(p=>{ const d=digits(p.phone); return (d in map)?map[d]:""; });
+  const ki=curKi(); const ym=$("monthSel").value; if(!ym){toast("月がありません");return;} const map=amountMap(ym);
+  const col=state.master.filter(p=>activeInKi(p,ki)).sort(byDeptRow).map(p=>{ const d=digits(p.phone); return (d in map)?map[d]:""; });
   navigator.clipboard.writeText(col.join("\n")).then(()=>toast("金額列をコピーしました（名簿順）"));
 };
 function dl(blob,name){ const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download=name; a.click(); }
@@ -890,7 +897,7 @@ function csv(rows){ return "﻿"+rows.map(r=>r.map(x=>`"${x==null?"":x}"`).join(
 $("dlMonthCsv").onclick=()=>{
   const ki=curKi(); const ym=$("monthSel").value; if(!ym){toast("月がありません");return;} const map=amountMap(ym);
   const rows=[["部署","氏名（当月担当）","電話番号",state.months[ym].label,"備考"]];
-  state.master.forEach(p=>{ const d=digits(p.phone); rows.push([p.dept,holderAt(p,ki,ym)||p.name,p.phone,(d in map)?map[d]:"",p.note||""]); });
+  state.master.filter(p=>activeInKi(p,ki)).sort(byDeptRow).forEach(p=>{ const d=digits(p.phone); rows.push([p.dept,holderAt(p,ki,ym)||p.name,p.phone,(d in map)?map[d]:"",p.note||""]); });
   dl(new Blob([csv(rows)],{type:"text/csv"}), `携帯料金_${ym}.csv`);
 };
 $("dlMatrix").onclick=()=>{
@@ -901,7 +908,7 @@ $("dlMatrix").onclick=()=>{
   dl(new Blob([csv([head,...body])],{type:"text/csv"}), `携帯料金_マトリクス_${kiLabel(ki)}.csv`);
 };
 
-$("addRow").onclick=()=>{ const last=state.master[state.master.length-1]; state.master.push({dept:last?last.dept:"",name:"",phone:"",tl:{}}); save(); renderMaster(); };
+$("addRow").onclick=()=>{ const last=state.master[state.master.length-1]; state.master.push({dept:last?last.dept:"",name:"",phone:"",tl:{},joinKi:curKi()}); save(); renderMaster(); };
 $("bulkToggle").onclick=()=>{ const a=$("bulkArea"); a.style.display=a.style.display==="none"?"block":"none"; $("bulkText").value=state.master.map(p=>`${p.dept},${p.name},${p.phone}`).join("\n"); };
 $("bulkApply").onclick=()=>{ const nr=[]; $("bulkText").value.split(/\r?\n/).forEach(l=>{ l=l.trim(); if(!l)return; const c=l.split(","); if(c.length>=3)nr.push({dept:c[0].trim(),name:c[1].trim(),phone:c.slice(2).join(",").trim(),tl:{}});}); if(nr.length){ state.master=nr; save(); renderMaster(); rerenderData(); toast("名簿を反映（"+nr.length+"件）※担当交代はリセットされます"); } };
 
